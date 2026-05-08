@@ -37,6 +37,14 @@
     "sdk"
   ],
   "author": "yonn2222",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YONN2222/IservAPI"
+  },
+  "bugs": {
+    "url": "https://github.com/YONN2222/IservAPI/issues"
+  },
+  "homepage": "https://github.com/YONN2222/IservAPI#readme",
   "license": "MIT",
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -48,7 +56,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-
     "@types/nodemailer": "^8.0.0",
     "@types/tough-cookie": "^4.0.5",
     "tsdown": "^0.22.0",

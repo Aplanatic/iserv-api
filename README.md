@@ -360,10 +360,10 @@ Returns the health status of the IServ video conference endpoint.
 
 ## Logging
 
-The SDK logs to stderr using a built-in logger. Set the `ISERV_LOG` environment variable to control output:
+The SDK logs to stderr using a built-in logger. Set `ISERV_DEBUG=1` to enable debug output:
 
 ```bash
-ISERV_LOG=debug node app.js
+ISERV_DEBUG=1 node app.js
 ```
 
 ---

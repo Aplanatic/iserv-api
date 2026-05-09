@@ -55,6 +55,12 @@ await api.disconnect();
     - [Get WebDAV client](#get-webdav-client)
     - [Get folder size](#get-folder-size)
     - [Get disk space](#get-disk-space)
+  - [Messenger](#messenger)
+    - [Get rooms](#get-rooms)
+    - [Get messages](#get-messages)
+    - [Get messages by name](#get-messages-by-name)
+    - [Get members](#get-members)
+    - [Get profile](#get-profile)
   - [Conference](#conference)
     - [Get conference health](#get-conference-health)
 - [Logging](#logging)
@@ -343,6 +349,78 @@ const usage = await api.files.getDiskSpace();
 ```
 
 Returns disk space info for all accessible storage volumes (label, free space, color).
+
+---
+
+### Messenger
+
+The messenger service wraps the Matrix protocol used by IServ. A Matrix session is established automatically during login.
+
+#### Get rooms
+
+```ts
+const rooms = await api.messenger.getRooms();
+```
+
+Returns all joined rooms (group chats and direct messages).
+
+Each room has:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Matrix room ID |
+| `name` | `string` | Room name or display name of the other person |
+| `isDirect` | `boolean` | Whether this is a DM |
+| `unreadCount` | `number` | Unread message count |
+| `lastMessage` | `RoomLastMessage \| null` | Most recent message |
+
+`lastMessage` fields: `body`, `sender` (Matrix user ID), `senderName` (display name or `null`), `timestamp`.
+
+#### Get messages
+
+```ts
+const { messages, start, end } = await api.messenger.getMessages(roomId, { limit: 30, from: end });
+```
+
+Returns up to `limit` messages (default 30) in reverse chronological order. Pass `end` from a previous response as `from` to paginate backwards. `end` is `undefined` when there are no more messages.
+
+Each message has:
+
+| Field | Type | Description                                                                  |
+|---|---|------------------------------------------------------------------------------|
+| `eventId` | `string` | Matrix event ID                                                              |
+| `sender` | `string` | Matrix user ID                                                               |
+| `senderName` | `string \| null` | Display name                                                                 |
+| `body` | `string` | Message text, empty string if the message is end-to-end encrypted            |
+| `msgtype` | `string` | e.g. `"m.text"`, `"m.image"`, `"m.file"` — `"m.encrypted"` for E2EE messages |
+| `timestamp` | `number` | Unix ms                                                                      |
+| `encrypted` | `boolean` | `true` if the message content cannot be decrypted by this SDK                |
+
+#### Get messages by name
+
+```ts
+const { messages } = await api.messenger.getMessagesByName("Max Mustermann", { limit: 20 });
+```
+
+Looks up the room by name and returns its messages. Throws if no room or multiple rooms match the name. Accepts the same options as `getMessages()`.
+
+#### Get members
+
+```ts
+const members = await api.messenger.getMembers(roomId);
+```
+
+Returns all current members of a room (excludes users who have left).
+
+Each member has: `userId`, `displayName`, `avatarUrl`, `membership` (`"join"` | `"invite"` | `"ban"` | `"knock"`).
+
+#### Get profile
+
+```ts
+const profile = await api.messenger.getProfile(userId);
+```
+
+Returns the Matrix profile of any user: `userId`, `displayName`, `avatarUrl`.
 
 ---
 

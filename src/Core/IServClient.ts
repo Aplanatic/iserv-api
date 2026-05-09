@@ -3,6 +3,7 @@ import { CalendarService } from "../Calendar/CalendarService.js";
 import { ConferenceService } from "../Conference/ConferenceService.js";
 import { EmailService } from "../Email/EmailService.js";
 import { FilesService } from "../Files/FilesService.js";
+import { MessengerService } from "../Messenger/MessengerService.js";
 import { NotificationService } from "../Notifications/NotificationService.js";
 import { UserService } from "../User/UserService.js";
 import { IServSession } from "./IServSession.js";
@@ -14,6 +15,7 @@ export class IServAPI {
   readonly notifications: NotificationService;
   readonly files: FilesService;
   readonly conference: ConferenceService;
+  readonly messenger: MessengerService;
 
   private readonly auth: AuthService;
 
@@ -25,6 +27,7 @@ export class IServAPI {
     this.notifications = new NotificationService(session);
     this.files = new FilesService(session);
     this.conference = new ConferenceService(session);
+    this.messenger = new MessengerService(session);
   }
 
   static async connect(url: string, username: string, password: string): Promise<IServAPI> {

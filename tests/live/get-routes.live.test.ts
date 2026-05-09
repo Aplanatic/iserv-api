@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { IServAPI } from "../../src";
+import { IServAPI } from "../../src/index.js";
 
 const envPath = path.resolve(process.cwd(), ".env");
 const hasEnvFile = fs.existsSync(envPath);

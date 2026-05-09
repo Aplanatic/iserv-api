@@ -11,7 +11,9 @@ function buildMockSession(routes: Parameters<typeof createMockIServSession>[0]["
   return { session, ...rest };
 }
 
-const SYNC_FILTER = JSON.stringify({ room: { timeline: { limit: 1 }, state: { lazy_load_members: true } } });
+const SYNC_FILTER = JSON.stringify({
+  room: { timeline: { limit: 1 } },
+});
 
 describe("MessengerService.getRooms()", () => {
   test("returns parsed rooms from sync response", async () => {
@@ -34,6 +36,11 @@ describe("MessengerService.getRooms()", () => {
             state: {
               events: [
                 { type: "m.room.name", content: { name: "Test Room" } },
+                {
+                  type: "m.room.member",
+                  state_key: "@alice:server",
+                  content: { membership: "join", displayname: "Alice" },
+                },
               ],
             },
             unread_notifications: { notification_count: 3 },
@@ -62,6 +69,7 @@ describe("MessengerService.getRooms()", () => {
     expect(rooms[0].isDirect).toBe(false);
     expect(rooms[0].lastMessage?.body).toBe("Hello!");
     expect(rooms[0].lastMessage?.sender).toBe("@alice:server");
+    expect(rooms[0].lastMessage?.senderName).toBe("Alice");
     expect(rooms[0].lastMessage?.timestamp).toBe(1700000000000);
     expectAllRoutesCalled();
   });
@@ -167,6 +175,13 @@ describe("MessengerService.getMessages()", () => {
     const response = JSON.stringify({
       start: "t1",
       end: "t2",
+      state: [
+        {
+          type: "m.room.member",
+          state_key: "@alice:server",
+          content: { membership: "join", displayname: "Alice" },
+        },
+      ],
       chunk: [
         {
           type: "m.room.message",
@@ -204,8 +219,10 @@ describe("MessengerService.getMessages()", () => {
     expect(result.messages[0].body).toBe("Hi there");
     expect(result.messages[0].msgtype).toBe("m.text");
     expect(result.messages[0].encrypted).toBe(false);
+    expect(result.messages[0].senderName).toBe("Alice");
     expect(result.messages[1].encrypted).toBe(true);
     expect(result.messages[1].body).toBe("");
+    expect(result.messages[1].senderName).toBeNull();
     expectAllRoutesCalled();
   });
 
@@ -222,7 +239,10 @@ describe("MessengerService.getMessages()", () => {
       },
     ]);
 
-    const result = await new MessengerService(session).getMessages(ROOM_ID, { limit: 10, from: "t5" });
+    const result = await new MessengerService(session).getMessages(ROOM_ID, {
+      limit: 10,
+      from: "t5",
+    });
 
     expect(result.messages).toHaveLength(0);
     expectAllRoutesCalled();

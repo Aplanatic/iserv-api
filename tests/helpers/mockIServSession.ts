@@ -129,8 +129,12 @@ export function createMockIServSession({
       username,
       baseUrl: () => `https://${server}`,
       matrixBaseUrl: () => `https://${server}/_matrix/client/v3`,
-      get matrixToken() { return _matrixToken; },
-      setMatrixToken: (token: string) => { _matrixToken = token; },
+      get matrixToken() {
+        return _matrixToken;
+      },
+      setMatrixToken: (token: string) => {
+        _matrixToken = token;
+      },
       getPassword: () => password,
       http,
     } as unknown as IServSession,

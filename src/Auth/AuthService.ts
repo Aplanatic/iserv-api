@@ -1,12 +1,18 @@
 import { IServAuthError } from "../Core/Errors.js";
+import { parseJson } from "../Core/HttpClient.js";
 import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
 
 const log = createLogger("Auth");
 
-function extractMatrixToken(html: string): string | null {
-  const match = html.match(/"messenger_authentication"\s*:\s*\{[^}]*"access_token"\s*:\s*"([^"]+)"/);
-  return match?.[1] ?? null;
+function extractPhpData(html: string): Record<string, unknown> | null {
+  const scriptMatch = html.match(/<script[^>]*id=["']php-data["'][^>]*>([\s\S]*?)<\/script>/);
+  if (!scriptMatch) return null;
+  try {
+    return JSON.parse((scriptMatch[1] ?? "").trim()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function isAuthenticationUrl(url: string): boolean {
@@ -46,10 +52,25 @@ export class AuthService {
       const messengerRes = await this.session.http.get(
         `${this.session.baseUrl()}/iserv/messenger/`,
       );
-      const token = extractMatrixToken(messengerRes.data as string);
-      if (token) {
-        this.session.setMatrixToken(token);
-      }
+      const phpData = extractPhpData(messengerRes.data as string);
+      const iservUserId = phpData?.iserv_user_id as string | undefined;
+      if (!iservUserId) throw new IServAuthError("Login failed! Could not retrieve user ID.");
+
+      const matrixLoginRes = await this.session.http.post(
+        `${this.session.matrixBaseUrl()}/login`,
+        JSON.stringify({
+          type: "m.login.password",
+          identifier: { type: "m.id.user", user: iservUserId },
+          password: this.session.getPassword(),
+          device_id: `ISERV-CLIENT-${iservUserId}`,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+      const matrixData = parseJson<Record<string, unknown>>(matrixLoginRes.data, "matrix login");
+      const matrixToken = (matrixData?.access_token as string) ?? null;
+      const matrixUserId = (matrixData?.user_id as string) ?? undefined;
+      if (!matrixToken) throw new IServAuthError("Login failed! Could not retrieve Matrix token.");
+      this.session.setMatrixToken(matrixToken, matrixUserId);
 
       log.info("Login successful");
     } catch (err) {

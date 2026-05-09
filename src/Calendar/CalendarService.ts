@@ -30,6 +30,20 @@ function parseDate(dateStr: string): Date {
   return date;
 }
 
+function offsetMinutes(dateStr: string): number {
+  const m = dateStr.match(/([+-])(\d{2}):(\d{2})$/);
+  if (!m) return 0;
+  const sign = m[1] === "+" ? 1 : -1;
+  return sign * (parseInt(m[2] ?? "0", 10) * 60 + parseInt(m[3] ?? "0", 10));
+}
+
+function formatLocal(dateStr: string, fmt: string): string {
+  const date = parseDate(dateStr);
+  const offset = offsetMinutes(dateStr);
+  const adjusted = new Date(date.getTime() + offset * 60_000);
+  return format(adjusted, fmt);
+}
+
 function toIsoMs(date: Date): string {
   return date.toISOString();
 }
@@ -332,7 +346,6 @@ export class CalendarService {
     if (!/^[A-Za-z0-9_@./-]+$/.test(calendar) || calendar.includes("..")) {
       throw new IServApiError("Invalid calendar", 400);
     }
-    const startDate = parseDate(start);
     const res = await this.session.http.post(
       `${this.session.baseUrl()}/iserv/calendar/delete`,
       null,
@@ -341,7 +354,9 @@ export class CalendarService {
           uid,
           hash,
           cal: calendar,
-          start: format(startDate, "yyyy-MM-dd'T'HH:mm:ssxxx"),
+          start:
+            formatLocal(start, "yyyy-MM-dd'T'HH:mm:ss") +
+            (start.match(/([+-]\d{2}:\d{2})$/)?.[1] ?? "Z"),
           edit_series: series ? "series" : "single",
         },
       },
@@ -380,10 +395,10 @@ export class CalendarService {
         params: {
           subject,
           calendar,
-          start: format(startDate, "dd.MM.yyyy"),
-          end: format(endDate, "dd.MM.yyyy"),
-          startTime: format(startDate, "HH:mm"),
-          endTime: format(endDate, "HH:mm"),
+          start: formatLocal(start, "dd.MM.yyyy"),
+          end: formatLocal(end, "dd.MM.yyyy"),
+          startTime: formatLocal(start, "HH:mm"),
+          endTime: formatLocal(end, "HH:mm"),
           allDay: isAllDayLong,
         },
       },

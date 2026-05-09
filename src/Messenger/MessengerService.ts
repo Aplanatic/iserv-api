@@ -3,7 +3,9 @@ import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
 
 const log = createLogger("MessengerService");
+
 import type {
+  MatrixEvent,
   MatrixMemberEvent,
   MatrixMembersResponse,
   MatrixMessagesResponse,
@@ -17,14 +19,26 @@ import type {
 } from "./MessengerTypes.js";
 
 const SYNC_FILTER = JSON.stringify({
-  room: { timeline: { limit: 1 }, state: { lazy_load_members: true } },
+  room: { timeline: { limit: 1 } },
 });
 
 export class MessengerService {
   constructor(private readonly session: IServSession) {}
 
   private authHeader(): Record<string, string> {
+    if (!this.session.matrixToken) throw new Error("Not authenticated: Matrix token is missing");
     return { Authorization: `Bearer ${this.session.matrixToken}` };
+  }
+
+  private buildNameMap(events: MatrixEvent[]): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const e of events) {
+      if (e.type === "m.room.member" && e.state_key) {
+        const displayname = e.content.displayname as string | undefined;
+        if (displayname) map.set(e.state_key, displayname);
+      }
+    }
+    return map;
   }
 
   async getRooms(): Promise<Room[]> {
@@ -45,9 +59,21 @@ export class MessengerService {
       }
     }
 
+    const selfId = this.session.matrixUserId;
+
     return Object.entries(joinedRooms).map(([roomId, room]) => {
       const nameEvent = room.state.events.find((e) => e.type === "m.room.name");
-      const name = (nameEvent?.content.name as string | undefined) ?? roomId;
+      let name = (nameEvent?.content.name as string | undefined) ?? null;
+
+      if (!name) {
+        const memberEvents = room.state.events.filter((e) => e.type === "m.room.member");
+        const other = memberEvents.find(
+          (e) => e.state_key !== selfId && e.content.membership === "join",
+        );
+        name = (other?.content.displayname as string | undefined) ?? roomId;
+      }
+
+      const nameById = this.buildNameMap(room.state.events);
 
       const messageEvents = room.timeline.events.filter(
         (e) => e.type === "m.room.message" || e.type === "m.room.encrypted",
@@ -58,8 +84,9 @@ export class MessengerService {
             body:
               lastEvent.type === "m.room.encrypted"
                 ? "[Encrypted message]"
-                : (lastEvent.content.body as string) ?? "",
+                : ((lastEvent.content.body as string) ?? ""),
             sender: lastEvent.sender ?? "",
+            senderName: nameById.get(lastEvent.sender ?? "") ?? null,
             timestamp: lastEvent.origin_server_ts ?? 0,
           }
         : null;
@@ -90,20 +117,24 @@ export class MessengerService {
       { params, headers: this.authHeader() },
     );
 
-    const data = parseJson<MatrixMessagesResponse>(res.data, `messages for ${roomId}`);
+    const data = parseJson<MatrixMessagesResponse>(res.data, "messages");
+
+    const nameById = this.buildNameMap(data.state ?? []);
 
     const messages: Message[] = data.chunk
       .filter((e) => e.type === "m.room.message" || e.type === "m.room.encrypted")
       .map((e) => ({
         eventId: e.event_id ?? "",
         sender: e.sender ?? "",
-        body: e.type === "m.room.encrypted" ? "" : (e.content.body as string) ?? "",
-        msgtype: e.type === "m.room.encrypted" ? "m.encrypted" : (e.content.msgtype as string) ?? "",
+        senderName: nameById.get(e.sender ?? "") ?? null,
+        body: e.type === "m.room.encrypted" ? "" : ((e.content.body as string) ?? ""),
+        msgtype:
+          e.type === "m.room.encrypted" ? "m.encrypted" : ((e.content.msgtype as string) ?? ""),
         timestamp: e.origin_server_ts ?? 0,
         encrypted: e.type === "m.room.encrypted",
       }));
 
-    log.info(`Got ${messages.length} messages for ${roomId}`);
+    log.debug(`Got ${messages.length} messages for ${roomId}`);
     return { messages, start: data.start, end: data.end };
   }
 
@@ -115,15 +146,33 @@ export class MessengerService {
       { params: { not_membership: "leave" }, headers: this.authHeader() },
     );
 
-    const data = parseJson<MatrixMembersResponse>(res.data, `members for ${roomId}`);
+    const data = parseJson<MatrixMembersResponse>(res.data, "members");
 
-    log.info(`Got ${data.chunk.length} members for ${roomId}`);
+    log.debug(`Got ${data.chunk.length} members for ${roomId}`);
     return data.chunk.map((e: MatrixMemberEvent) => ({
       userId: e.state_key,
       displayName: e.content.displayname ?? null,
       avatarUrl: e.content.avatar_url ?? null,
       membership: e.content.membership as "join" | "invite",
     }));
+  }
+
+  async getMessagesByName(
+    name: string,
+    options: { limit?: number; from?: string } = {},
+  ): Promise<MessagesResult> {
+    const rooms = await this.getRooms();
+    const matches = rooms.filter((r) => r.name.toLowerCase() === name.toLowerCase());
+
+    if (matches.length === 0) throw new Error(`No room found with name "${name}"`);
+    if (matches.length > 1)
+      throw new Error(
+        `Multiple rooms found with name "${name}" — use getMessages() with a room ID`,
+      );
+
+    const roomId = matches[0]?.id;
+    if (!roomId) throw new Error(`No room found with name "${name}"`);
+    return this.getMessages(roomId, options);
   }
 
   async getProfile(userId: string): Promise<UserProfile> {
@@ -134,9 +183,9 @@ export class MessengerService {
       { headers: this.authHeader() },
     );
 
-    const data = parseJson<MatrixProfileResponse>(res.data, `profile for ${userId}`);
+    const data = parseJson<MatrixProfileResponse>(res.data, "profile");
 
-    log.info(`Got profile for ${userId}`);
+    log.debug(`Got profile for ${userId}`);
     return {
       userId,
       displayName: data.displayname ?? null,

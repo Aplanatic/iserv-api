@@ -8,6 +8,13 @@ type HttpCall = {
   body?: string | null;
 };
 
+const MOCK_USER_ID = "abc-123";
+const MESSENGER_HTML = `<script id="php-data">${JSON.stringify({ iserv_user_id: MOCK_USER_ID })}</script>`;
+const MATRIX_LOGIN_RESPONSE = JSON.stringify({
+  access_token: "syt_test",
+  user_id: `@${MOCK_USER_ID}:iserv.example`,
+});
+
 function createSession(
   responses: {
     get: Array<{ data: string; status: number; headers: Record<string, string>; url: string }>;
@@ -15,10 +22,18 @@ function createSession(
   },
   calls: HttpCall[] = [],
 ): IServSession {
+  let matrixToken: string | null = null;
   return {
     username: "alice",
     baseUrl: () => "https://iserv.example",
+    matrixBaseUrl: () => "https://iserv.example/_matrix/client/v3",
     getPassword: () => "secret",
+    get matrixToken() {
+      return matrixToken;
+    },
+    setMatrixToken: (token: string) => {
+      matrixToken = token;
+    },
     http: {
       get: async (url: string) => {
         calls.push({ method: "get", url });
@@ -49,10 +64,21 @@ describe("AuthService.login", () => {
             url: "https://iserv.example/iserv/auth/login?_target_path=/iserv/",
           },
           { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
-          { data: "<html>no token</html>", status: 200, headers: {}, url: "https://iserv.example/iserv/messenger/" },
+          {
+            data: MESSENGER_HTML,
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/",
+          },
         ],
         post: [
           { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
+          {
+            data: MATRIX_LOGIN_RESPONSE,
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/_matrix/client/v3/login",
+          },
         ],
       },
       calls,

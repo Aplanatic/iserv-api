@@ -21,9 +21,11 @@ export class IServSession {
   }
 
   matrixToken: string | null = null;
+  matrixUserId: string | null = null;
 
-  setMatrixToken(token: string): void {
+  setMatrixToken(token: string, userId?: string): void {
     this.matrixToken = token;
+    if (userId) this.matrixUserId = userId;
   }
 
   matrixBaseUrl(): string {

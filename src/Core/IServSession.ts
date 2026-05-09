@@ -20,6 +20,16 @@ export class IServSession {
     passwords.set(this, password);
   }
 
+  matrixToken: string | null = null;
+
+  setMatrixToken(token: string): void {
+    this.matrixToken = token;
+  }
+
+  matrixBaseUrl(): string {
+    return `https://${this.url}/_matrix/client/v3`;
+  }
+
   getPassword(): string {
     const pw = passwords.get(this);
     if (pw === undefined) throw new Error("Session password unavailable");

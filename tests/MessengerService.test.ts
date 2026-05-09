@@ -1,0 +1,159 @@
+import { describe, expect, test } from "vitest";
+import { MessengerService } from "../src/Messenger/MessengerService.js";
+import { createMockIServSession } from "./helpers/mockIServSession.js";
+
+const MATRIX_BASE = "https://iserv.example/_matrix/client/v3";
+const MATRIX_TOKEN = "syt_test_token_abc";
+
+function buildMockSession(routes: Parameters<typeof createMockIServSession>[0]["routes"]) {
+  const { session, ...rest } = createMockIServSession({ routes });
+  session.setMatrixToken(MATRIX_TOKEN);
+  return { session, ...rest };
+}
+
+const SYNC_FILTER = JSON.stringify({ room: { timeline: { limit: 1 }, state: { lazy_load_members: true } } });
+
+describe("MessengerService.getRooms()", () => {
+  test("returns parsed rooms from sync response", async () => {
+    const syncResponse = JSON.stringify({
+      next_batch: "s123",
+      rooms: {
+        join: {
+          "!room1:server": {
+            timeline: {
+              events: [
+                {
+                  type: "m.room.message",
+                  sender: "@alice:server",
+                  event_id: "$ev1",
+                  origin_server_ts: 1700000000000,
+                  content: { msgtype: "m.text", body: "Hello!" },
+                },
+              ],
+            },
+            state: {
+              events: [
+                { type: "m.room.name", content: { name: "Test Room" } },
+              ],
+            },
+            unread_notifications: { notification_count: 3 },
+          },
+        },
+      },
+      account_data: { events: [] },
+    });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: SYNC_FILTER, timeout: 0 },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: syncResponse },
+      },
+    ]);
+
+    const rooms = await new MessengerService(session).getRooms();
+
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].id).toBe("!room1:server");
+    expect(rooms[0].name).toBe("Test Room");
+    expect(rooms[0].unreadCount).toBe(3);
+    expect(rooms[0].isDirect).toBe(false);
+    expect(rooms[0].lastMessage?.body).toBe("Hello!");
+    expect(rooms[0].lastMessage?.sender).toBe("@alice:server");
+    expect(rooms[0].lastMessage?.timestamp).toBe(1700000000000);
+    expectAllRoutesCalled();
+  });
+
+  test("marks room as direct when roomId is in m.direct account_data", async () => {
+    const syncResponse = JSON.stringify({
+      next_batch: "s124",
+      rooms: {
+        join: {
+          "!dm:server": {
+            timeline: { events: [] },
+            state: { events: [] },
+            unread_notifications: {},
+          },
+        },
+      },
+      account_data: {
+        events: [{ type: "m.direct", content: { "@bob:server": ["!dm:server"] } }],
+      },
+    });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: SYNC_FILTER, timeout: 0 },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: syncResponse },
+      },
+    ]);
+
+    const rooms = await new MessengerService(session).getRooms();
+    expect(rooms[0].isDirect).toBe(true);
+    expectAllRoutesCalled();
+  });
+
+  test("returns null lastMessage when no message events in timeline", async () => {
+    const syncResponse = JSON.stringify({
+      next_batch: "s125",
+      rooms: {
+        join: {
+          "!empty:server": {
+            timeline: { events: [{ type: "m.room.member", content: {}, sender: "@x:s" }] },
+            state: { events: [] },
+            unread_notifications: {},
+          },
+        },
+      },
+      account_data: { events: [] },
+    });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: SYNC_FILTER, timeout: 0 },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: syncResponse },
+      },
+    ]);
+
+    const rooms = await new MessengerService(session).getRooms();
+    expect(rooms[0].lastMessage).toBeNull();
+    expectAllRoutesCalled();
+  });
+
+  test("uses roomId as name when no m.room.name state event exists", async () => {
+    const syncResponse = JSON.stringify({
+      next_batch: "s126",
+      rooms: {
+        join: {
+          "!noname:server": {
+            timeline: { events: [] },
+            state: { events: [] },
+            unread_notifications: {},
+          },
+        },
+      },
+      account_data: { events: [] },
+    });
+
+    const { session } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: SYNC_FILTER, timeout: 0 },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: syncResponse },
+      },
+    ]);
+
+    const rooms = await new MessengerService(session).getRooms();
+    expect(rooms[0].name).toBe("!noname:server");
+  });
+});

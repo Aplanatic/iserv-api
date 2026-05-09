@@ -1,7 +1,13 @@
 import { parseJson } from "../Core/HttpClient.js";
 import type { IServSession } from "../Core/IServSession.js";
+import { createLogger } from "../Core/Logger.js";
+
+const log = createLogger("MessengerService");
 import type {
+  MatrixMessagesResponse,
   MatrixSyncResponse,
+  Message,
+  MessagesResult,
   Room,
 } from "./MessengerTypes.js";
 
@@ -61,5 +67,38 @@ export class MessengerService {
         isDirect: directRoomIds.has(roomId),
       };
     });
+  }
+
+  async getMessages(
+    roomId: string,
+    options: { limit?: number; from?: string } = {},
+  ): Promise<MessagesResult> {
+    const { limit = 30, from } = options;
+    const encodedRoomId = encodeURIComponent(roomId);
+    const filter = JSON.stringify({ lazy_load_members: true });
+
+    const params: Record<string, string | number | boolean> = { limit, dir: "b", filter };
+    if (from) params.from = from;
+
+    const res = await this.session.http.get(
+      `${this.session.matrixBaseUrl()}/rooms/${encodedRoomId}/messages`,
+      { params, headers: this.authHeader() },
+    );
+
+    const data = parseJson<MatrixMessagesResponse>(res.data, `messages for ${roomId}`);
+
+    const messages: Message[] = data.chunk
+      .filter((e) => e.type === "m.room.message" || e.type === "m.room.encrypted")
+      .map((e) => ({
+        eventId: e.event_id ?? "",
+        sender: e.sender ?? "",
+        body: e.type === "m.room.encrypted" ? "" : (e.content.body as string) ?? "",
+        msgtype: e.type === "m.room.encrypted" ? "m.encrypted" : (e.content.msgtype as string) ?? "",
+        timestamp: e.origin_server_ts ?? 0,
+        encrypted: e.type === "m.room.encrypted",
+      }));
+
+    log.info(`Got ${messages.length} messages for ${roomId}`);
+    return { messages, start: data.start, end: data.end };
   }
 }

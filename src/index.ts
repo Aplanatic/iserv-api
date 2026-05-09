@@ -20,3 +20,12 @@ export type {
   UserPublicInfo,
   WeekDay,
 } from "./Types/index.js";
+export type {
+  Room,
+  RoomLastMessage,
+  Message,
+  MessagesResult,
+  Member,
+  UserProfile,
+} from "./Messenger/MessengerTypes.js";
+export { MessengerService } from "./Messenger/MessengerService.js";

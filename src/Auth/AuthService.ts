@@ -4,6 +4,11 @@ import { createLogger } from "../Core/Logger.js";
 
 const log = createLogger("Auth");
 
+function extractMatrixToken(html: string): string | null {
+  const match = html.match(/"messenger_authentication"\s*:\s*\{[^}]*"access_token"\s*:\s*"([^"]+)"/);
+  return match?.[1] ?? null;
+}
+
 function isAuthenticationUrl(url: string): boolean {
   const parsed = new URL(url);
   return parsed.pathname === "/iserv/auth/login" || parsed.pathname === "/iserv/auth/auth";
@@ -36,6 +41,14 @@ export class AuthService {
       const homeRes = await this.session.http.get(`${this.session.baseUrl()}/iserv/`);
       if (isAuthenticationUrl(homeRes.url)) {
         throw new IServAuthError("Login failed! Session was not established.");
+      }
+
+      const messengerRes = await this.session.http.get(
+        `${this.session.baseUrl()}/iserv/messenger/`,
+      );
+      const token = extractMatrixToken(messengerRes.data as string);
+      if (token) {
+        this.session.setMatrixToken(token);
       }
 
       log.info("Login successful");

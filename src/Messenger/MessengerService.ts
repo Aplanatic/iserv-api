@@ -4,11 +4,16 @@ import { createLogger } from "../Core/Logger.js";
 
 const log = createLogger("MessengerService");
 import type {
+  MatrixMemberEvent,
+  MatrixMembersResponse,
   MatrixMessagesResponse,
+  MatrixProfileResponse,
   MatrixSyncResponse,
+  Member,
   Message,
   MessagesResult,
   Room,
+  UserProfile,
 } from "./MessengerTypes.js";
 
 const SYNC_FILTER = JSON.stringify({
@@ -100,5 +105,42 @@ export class MessengerService {
 
     log.info(`Got ${messages.length} messages for ${roomId}`);
     return { messages, start: data.start, end: data.end };
+  }
+
+  async getMembers(roomId: string): Promise<Member[]> {
+    const encodedRoomId = encodeURIComponent(roomId);
+
+    const res = await this.session.http.get(
+      `${this.session.matrixBaseUrl()}/rooms/${encodedRoomId}/members`,
+      { params: { not_membership: "leave" }, headers: this.authHeader() },
+    );
+
+    const data = parseJson<MatrixMembersResponse>(res.data, `members for ${roomId}`);
+
+    log.info(`Got ${data.chunk.length} members for ${roomId}`);
+    return data.chunk.map((e: MatrixMemberEvent) => ({
+      userId: e.state_key,
+      displayName: e.content.displayname ?? null,
+      avatarUrl: e.content.avatar_url ?? null,
+      membership: e.content.membership as "join" | "invite",
+    }));
+  }
+
+  async getProfile(userId: string): Promise<UserProfile> {
+    const encodedUserId = encodeURIComponent(userId);
+
+    const res = await this.session.http.get(
+      `${this.session.matrixBaseUrl()}/profile/${encodedUserId}`,
+      { headers: this.authHeader() },
+    );
+
+    const data = parseJson<MatrixProfileResponse>(res.data, `profile for ${userId}`);
+
+    log.info(`Got profile for ${userId}`);
+    return {
+      userId,
+      displayName: data.displayname ?? null,
+      avatarUrl: data.avatar_url ?? null,
+    };
   }
 }

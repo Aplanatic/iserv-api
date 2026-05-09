@@ -228,3 +228,90 @@ describe("MessengerService.getMessages()", () => {
     expectAllRoutesCalled();
   });
 });
+
+describe("MessengerService.getMembers()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+
+  test("returns parsed members excluding left users", async () => {
+    const response = JSON.stringify({
+      chunk: [
+        {
+          type: "m.room.member",
+          state_key: "@alice:server",
+          content: { membership: "join", displayname: "Alice", avatar_url: "mxc://server/abc" },
+        },
+        {
+          type: "m.room.member",
+          state_key: "@bob:server",
+          content: { membership: "invite", displayname: "Bob", avatar_url: null },
+        },
+      ],
+    });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/members`,
+        params: { not_membership: "leave" },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: response },
+      },
+    ]);
+
+    const members = await new MessengerService(session).getMembers(ROOM_ID);
+
+    expect(members).toHaveLength(2);
+    expect(members[0].userId).toBe("@alice:server");
+    expect(members[0].displayName).toBe("Alice");
+    expect(members[0].avatarUrl).toBe("mxc://server/abc");
+    expect(members[0].membership).toBe("join");
+    expect(members[1].userId).toBe("@bob:server");
+    expect(members[1].membership).toBe("invite");
+    expect(members[1].avatarUrl).toBeNull();
+    expectAllRoutesCalled();
+  });
+});
+
+describe("MessengerService.getProfile()", () => {
+  test("returns parsed user profile", async () => {
+    const userId = "@alice:server";
+    const encodedUserId = encodeURIComponent(userId);
+    const response = JSON.stringify({ displayname: "Alice Smith", avatar_url: "mxc://server/xyz" });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/profile/${encodedUserId}`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: response },
+      },
+    ]);
+
+    const profile = await new MessengerService(session).getProfile(userId);
+
+    expect(profile.userId).toBe(userId);
+    expect(profile.displayName).toBe("Alice Smith");
+    expect(profile.avatarUrl).toBe("mxc://server/xyz");
+    expectAllRoutesCalled();
+  });
+
+  test("returns nulls for missing optional profile fields", async () => {
+    const userId = "@anon:server";
+    const encodedUserId = encodeURIComponent(userId);
+
+    const { session } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/profile/${encodedUserId}`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: JSON.stringify({}) },
+      },
+    ]);
+
+    const profile = await new MessengerService(session).getProfile(userId);
+
+    expect(profile.displayName).toBeNull();
+    expect(profile.avatarUrl).toBeNull();
+  });
+});

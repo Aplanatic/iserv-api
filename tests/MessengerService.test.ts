@@ -157,3 +157,74 @@ describe("MessengerService.getRooms()", () => {
     expect(rooms[0].name).toBe("!noname:server");
   });
 });
+
+describe("MessengerService.getMessages()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const MESSAGES_FILTER = JSON.stringify({ lazy_load_members: true });
+
+  test("returns parsed messages and pagination tokens", async () => {
+    const response = JSON.stringify({
+      start: "t1",
+      end: "t2",
+      chunk: [
+        {
+          type: "m.room.message",
+          event_id: "$ev1",
+          sender: "@alice:server",
+          origin_server_ts: 1700000001000,
+          content: { msgtype: "m.text", body: "Hi there" },
+        },
+        {
+          type: "m.room.encrypted",
+          event_id: "$ev2",
+          sender: "@bob:server",
+          origin_server_ts: 1700000002000,
+          content: { algorithm: "m.megolm.v1.aes-sha2" },
+        },
+      ],
+    });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/messages`,
+        params: { limit: 30, dir: "b", filter: MESSAGES_FILTER },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: response },
+      },
+    ]);
+
+    const result = await new MessengerService(session).getMessages(ROOM_ID);
+
+    expect(result.start).toBe("t1");
+    expect(result.end).toBe("t2");
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].eventId).toBe("$ev1");
+    expect(result.messages[0].body).toBe("Hi there");
+    expect(result.messages[0].msgtype).toBe("m.text");
+    expect(result.messages[0].encrypted).toBe(false);
+    expect(result.messages[1].encrypted).toBe(true);
+    expect(result.messages[1].body).toBe("");
+    expectAllRoutesCalled();
+  });
+
+  test("passes custom limit and from token", async () => {
+    const response = JSON.stringify({ start: "t5", end: "t6", chunk: [] });
+
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/messages`,
+        params: { limit: 10, dir: "b", filter: MESSAGES_FILTER, from: "t5" },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: response },
+      },
+    ]);
+
+    const result = await new MessengerService(session).getMessages(ROOM_ID, { limit: 10, from: "t5" });
+
+    expect(result.messages).toHaveLength(0);
+    expectAllRoutesCalled();
+  });
+});

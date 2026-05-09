@@ -103,6 +103,7 @@ export function createMockIServSession({
 } {
   const pendingRoutes = [...routes];
   const calls: MockHttpCall[] = [];
+  let _matrixToken: string | null = null;
 
   const http = {
     get: async (url: string, config: HttpConfig = {}) => {
@@ -127,6 +128,9 @@ export function createMockIServSession({
       url: server,
       username,
       baseUrl: () => `https://${server}`,
+      matrixBaseUrl: () => `https://${server}/_matrix/client/v3`,
+      get matrixToken() { return _matrixToken; },
+      setMatrixToken: (token: string) => { _matrixToken = token; },
       getPassword: () => password,
       http,
     } as unknown as IServSession,

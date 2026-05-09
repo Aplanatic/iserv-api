@@ -49,6 +49,7 @@ describe("AuthService.login", () => {
             url: "https://iserv.example/iserv/auth/login?_target_path=/iserv/",
           },
           { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
+          { data: "<html>no token</html>", status: 200, headers: {}, url: "https://iserv.example/iserv/messenger/" },
         ],
         post: [
           { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },

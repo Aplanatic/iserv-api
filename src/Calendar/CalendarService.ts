@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { format } from "date-fns";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
 import { IServApiError } from "../Core/Errors.js";
 import { parseJson } from "../Core/HttpClient.js";
 import type { IServSession } from "../Core/IServSession.js";
@@ -17,6 +18,8 @@ import type {
 } from "./CalendarTypes.js";
 
 const log = createLogger("Calendar");
+
+dayjs.extend(utc);
 
 const ALARM_PRESETS = ["0M", "5M", "15M", "30M", "1H", "2H", "12H", "1D", "2D", "7D"] as const;
 
@@ -41,7 +44,7 @@ function formatLocal(dateStr: string, fmt: string): string {
   const date = parseDate(dateStr);
   const offset = offsetMinutes(dateStr);
   const adjusted = new Date(date.getTime() + offset * 60_000);
-  return format(adjusted, fmt);
+  return dayjs.utc(adjusted).format(fmt);
 }
 
 function toIsoMs(date: Date): string {
@@ -86,13 +89,15 @@ function buildAlarmData(alarms: AlarmType[], start: Date): FormData {
         );
       }
       const { days, hours, minutes } = parseAlarmPreset(alarm);
-      const typeStr = alarm.endsWith("D") ? `P${alarm}` : `PT${alarm}`;
-      result[`eventForm[alarms][${i}][trigger][type]`] = typeStr;
+      result[`eventForm[alarms][${i}][trigger][type]`] = alarm.endsWith("D")
+        ? `P${alarm}`
+        : `PT${alarm}`;
       result[`eventForm[alarms][${i}][trigger][interval][days]`] = String(days);
       result[`eventForm[alarms][${i}][trigger][interval][hours]`] = String(hours);
       result[`eventForm[alarms][${i}][trigger][interval][minutes]`] = String(minutes);
       result[`eventForm[alarms][${i}][trigger][before]`] = "1";
-      result[`eventForm[alarms][${i}][trigger][dateTime]`] = `${format(start, "dd.MM.yyyy")}+00:00`;
+      result[`eventForm[alarms][${i}][trigger][dateTime]`] =
+        `${dayjs(start).format("DD.MM.YYYY")}+00:00`;
     } else if ("custom_date_time" in alarm) {
       const dt = parseDate(alarm.custom_date_time.dateTime);
       result[`eventForm[alarms][${i}][trigger][type]`] = "custom_date_time";
@@ -100,7 +105,7 @@ function buildAlarmData(alarms: AlarmType[], start: Date): FormData {
       result[`eventForm[alarms][${i}][trigger][interval][hours]`] = "0";
       result[`eventForm[alarms][${i}][trigger][interval][minutes]`] = "0";
       result[`eventForm[alarms][${i}][trigger][before]`] = "1";
-      result[`eventForm[alarms][${i}][trigger][dateTime]`] = format(dt, "dd.MM.yyyy HH:mm");
+      result[`eventForm[alarms][${i}][trigger][dateTime]`] = dayjs(dt).format("DD.MM.YYYY HH:mm");
     } else if ("custom_interval" in alarm) {
       const ci = alarm.custom_interval;
       if (!("days" in ci.interval && "hours" in ci.interval && "minutes" in ci.interval)) {
@@ -111,7 +116,8 @@ function buildAlarmData(alarms: AlarmType[], start: Date): FormData {
       result[`eventForm[alarms][${i}][trigger][interval][hours]`] = String(ci.interval.hours);
       result[`eventForm[alarms][${i}][trigger][interval][minutes]`] = String(ci.interval.minutes);
       result[`eventForm[alarms][${i}][trigger][before]`] = ci.before ? "1" : "0";
-      result[`eventForm[alarms][${i}][trigger][dateTime]`] = `${format(start, "dd.MM.yyyy")}+00:00`;
+      result[`eventForm[alarms][${i}][trigger][dateTime]`] =
+        `${dayjs(start).format("DD.MM.YYYY")}+00:00`;
     }
   }
   return result;
@@ -230,10 +236,10 @@ function buildEventFormData(
     "eventForm[calendar]": calendar,
     "eventForm[category]": category,
     "eventForm[location]": location,
-    "eventForm[startDate]": format(startDate, "dd.MM.yyyy"),
-    "eventForm[startTime]": format(startDate, "HH:mm"),
-    "eventForm[endDate]": format(endDate, "dd.MM.yyyy"),
-    "eventForm[endTime]": format(endDate, "HH:mm"),
+    "eventForm[startDate]": dayjs(startDate).format("DD.MM.YYYY"),
+    "eventForm[startTime]": dayjs(startDate).format("HH:mm"),
+    "eventForm[endDate]": dayjs(endDate).format("DD.MM.YYYY"),
+    "eventForm[endTime]": dayjs(endDate).format("HH:mm"),
     "eventForm[description]": description,
     "eventForm[showMeAs]": showMeAs,
     "eventForm[privacy]": privacy,
@@ -289,8 +295,8 @@ export class CalendarService {
       `${this.session.baseUrl()}/iserv/calendar/feed/calendar-multi`,
       {
         params: {
-          start: format(startDate, "yyyy-MM-dd"),
-          end: format(endDate, "yyyy-MM-dd"),
+          start: dayjs(startDate).format("YYYY-MM-DD"),
+          end: dayjs(endDate).format("YYYY-MM-DD"),
         },
       },
     );
@@ -355,7 +361,7 @@ export class CalendarService {
           hash,
           cal: calendar,
           start:
-            formatLocal(start, "yyyy-MM-dd'T'HH:mm:ss") +
+            formatLocal(start, "YYYY-MM-DDTHH:mm:ss") +
             (start.match(/([+-]\d{2}:\d{2})$/)?.[1] ?? "Z"),
           edit_series: series ? "series" : "single",
         },
@@ -395,8 +401,8 @@ export class CalendarService {
         params: {
           subject,
           calendar,
-          start: formatLocal(start, "dd.MM.yyyy"),
-          end: formatLocal(end, "dd.MM.yyyy"),
+          start: formatLocal(start, "DD.MM.YYYY"),
+          end: formatLocal(end, "DD.MM.YYYY"),
           startTime: formatLocal(start, "HH:mm"),
           endTime: formatLocal(end, "HH:mm"),
           allDay: isAllDayLong,

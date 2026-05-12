@@ -115,7 +115,17 @@ export function createHttpClient(cookieJar: CookieJar) {
     return { data: res.body as string, status: res.statusCode, headers: res.headers, url: res.url };
   }
 
-  return { get, post, put };
+  async function patch(url: string, body?: string | null, config: PostConfig = {}) {
+    const opts: OptionsOfTextResponseBody = { responseType: "text" };
+    if (body != null) opts.body = body;
+    if (config.params) opts.searchParams = config.params;
+    if (config.headers) opts.headers = config.headers;
+    const res = await client.patch(url, opts);
+    if (res.statusCode >= 400) throw new IServApiError(`HTTP ${res.statusCode}`, res.statusCode);
+    return { data: res.body as string, status: res.statusCode, headers: res.headers, url: res.url };
+  }
+
+  return { get, post, put, patch };
 }
 
 export type HttpClient = ReturnType<typeof createHttpClient>;

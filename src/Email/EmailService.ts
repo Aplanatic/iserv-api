@@ -5,7 +5,13 @@ import { IServApiError } from "../Core/Errors.js";
 import { parseJson } from "../Core/HttpClient.js";
 import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
-import type { EmailList, EmailMessage, GetEmailsOptions, SendEmailOptions } from "./EmailTypes.js";
+import type {
+  EmailList,
+  EmailMessage,
+  GetEmailsOptions,
+  PatchMessageResult,
+  SendEmailOptions,
+} from "./EmailTypes.js";
 
 const log = createLogger("Email");
 
@@ -75,6 +81,32 @@ export class EmailService {
     );
     log.info("Got message");
     return parseJson<EmailMessage>(res.data, "message");
+  }
+
+  private async patchFlags(
+    uid: number,
+    mailbox: string,
+    flags: { add?: string[]; remove?: string[] },
+  ): Promise<PatchMessageResult> {
+    if (!Number.isInteger(uid) || uid <= 0) {
+      throw new IServApiError("uid must be a positive integer", 400);
+    }
+    const mailboxId = encodeMailboxId(mailbox);
+    const res = await this.session.http.patch(
+      `${this.session.baseUrl()}/iserv/mail/api/v2/account/${encodeURIComponent(this.accountId)}/mailbox/${mailboxId}/message/${uid}`,
+      JSON.stringify({ flags }),
+      { headers: { ...CSRF_HEADERS, "Content-Type": "application/json" } },
+    );
+    log.info(`Patched flags for message ${uid}`);
+    return parseJson<PatchMessageResult>(res.data, "patch message flags");
+  }
+
+  async markAsRead(uid: number, mailbox = "INBOX"): Promise<PatchMessageResult> {
+    return this.patchFlags(uid, mailbox, { add: ["\\Seen"] });
+  }
+
+  async markAsUnread(uid: number, mailbox = "INBOX"): Promise<PatchMessageResult> {
+    return this.patchFlags(uid, mailbox, { remove: ["\\Seen"] });
   }
 
   async sendEmail(options: SendEmailOptions): Promise<void> {

@@ -1,5 +1,6 @@
 export { IServApiError, IServAuthError } from "./Core/Errors.js";
 export { IServAPI } from "./Core/IServClient.js";
+export type { PatchMessageResult } from "./Email/EmailTypes.js";
 export { MessengerService } from "./Messenger/MessengerService.js";
 export type {
   Member,

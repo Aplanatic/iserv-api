@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.2 - 2026-05-12
+
+### Added
+
+- Added `api.email.markAsUnread(uid, mailbox?)` to mark an email as unread.
+- Added `api.email.markAsRead(uid, mailbox?)` to mark an email as read.
+
 ## 1.3.1 - 2026-05-11
 
 ### Changed

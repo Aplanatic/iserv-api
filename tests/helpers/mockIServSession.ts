@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import type { IServSession } from "../../src/Core/IServSession.js";
 
-type HttpMethod = "get" | "post" | "put";
+type HttpMethod = "get" | "post" | "put" | "patch";
 
 type HttpConfig = {
   params?: Record<string, string | number | boolean>;
@@ -121,6 +121,13 @@ export function createMockIServSession({
     },
     put: async (url: string, body?: string | null, config: HttpConfig = {}) => {
       const call: MockHttpCall = { method: "put", url, config: normalizeConfig(config) };
+      if (body !== undefined) call.body = body;
+      calls.push(call);
+      const route = findRoute(pendingRoutes, call);
+      return routeResponse(route, url);
+    },
+    patch: async (url: string, body?: string | null, config: HttpConfig = {}) => {
+      const call: MockHttpCall = { method: "patch", url, config: normalizeConfig(config) };
       if (body !== undefined) call.body = body;
       calls.push(call);
       const route = findRoute(pendingRoutes, call);

@@ -43,6 +43,8 @@ await api.disconnect();
     - [Get emails](#get-emails)
     - [Get message](#get-message)
     - [Send email](#send-email)
+    - [Mark as unread](#mark-as-unread)
+    - [Mark as read](#mark-as-read)
   - [Calendar](#calendar)
     - [Get upcoming events](#get-upcoming-events)
     - [Get event sources](#get-event-sources)
@@ -209,6 +211,24 @@ await api.email.sendEmail({
 ```
 
 Attachments must be relative paths. `smtpsPort` must be `465` or `587`.
+
+#### Mark as unread
+
+```ts
+await api.email.markAsUnread(uid);
+await api.email.markAsUnread(uid, "INBOX"); // mailbox defaults to "INBOX"
+```
+
+Marks a message as unread by its UID.
+
+#### Mark as read
+
+```ts
+await api.email.markAsRead(uid);
+await api.email.markAsRead(uid, "INBOX");
+```
+
+Marks a message as read by its UID.
 
 ---
 

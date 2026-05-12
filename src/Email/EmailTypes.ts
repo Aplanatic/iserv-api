@@ -81,6 +81,11 @@ export interface GetEmailsOptions {
   order?: "asc" | "desc";
 }
 
+export interface PatchMessageResult {
+  oldId: EmailId;
+  newId: EmailId;
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;

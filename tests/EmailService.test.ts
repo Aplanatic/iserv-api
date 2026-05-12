@@ -345,6 +345,71 @@ describe("EmailService", () => {
     });
   });
 
+  describe("markAsUnread", () => {
+    test("sends PATCH with remove Seen flag and returns result", async () => {
+      const result = {
+        oldId: { accountId: ACCOUNT_ID, mailboxId: INBOX_ID, uid: 1 },
+        newId: { accountId: ACCOUNT_ID, mailboxId: INBOX_ID, uid: 1 },
+      };
+      const { session, calls, expectAllRoutesCalled } = createMockIServSession({
+        username: "test.user",
+        routes: [
+          {
+            method: "patch",
+            url: `https://iserv.example/iserv/mail/api/v2/account/${encodeURIComponent(ACCOUNT_ID)}/mailbox/${INBOX_ID}/message/1`,
+            headers: { "X-ISERV-CSRF-PROTECTION": "yes pls", "Content-Type": "application/json" },
+            response: { data: JSON.stringify(result) },
+          },
+        ],
+      });
+
+      const res = await new EmailService(session).markAsUnread(1);
+      expect(res.oldId.uid).toBe(1);
+      expect(res.newId.uid).toBe(1);
+      expect(calls[0]?.body).toBe(JSON.stringify({ flags: { remove: ["\\Seen"] } }));
+      expectAllRoutesCalled();
+    });
+
+    test("throws when uid=0", async () => {
+      const { session } = createMockIServSession({ username: "test.user", routes: [] });
+      await expect(new EmailService(session).markAsUnread(0)).rejects.toThrow(
+        "uid must be a positive integer",
+      );
+    });
+  });
+
+  describe("markAsRead", () => {
+    test("sends PATCH with add Seen flag and returns result", async () => {
+      const result = {
+        oldId: { accountId: ACCOUNT_ID, mailboxId: INBOX_ID, uid: 5 },
+        newId: { accountId: ACCOUNT_ID, mailboxId: INBOX_ID, uid: 5 },
+      };
+      const { session, calls, expectAllRoutesCalled } = createMockIServSession({
+        username: "test.user",
+        routes: [
+          {
+            method: "patch",
+            url: `https://iserv.example/iserv/mail/api/v2/account/${encodeURIComponent(ACCOUNT_ID)}/mailbox/${INBOX_ID}/message/5`,
+            headers: { "X-ISERV-CSRF-PROTECTION": "yes pls", "Content-Type": "application/json" },
+            response: { data: JSON.stringify(result) },
+          },
+        ],
+      });
+
+      const res = await new EmailService(session).markAsRead(5);
+      expect(res.oldId.uid).toBe(5);
+      expect(calls[0]?.body).toBe(JSON.stringify({ flags: { add: ["\\Seen"] } }));
+      expectAllRoutesCalled();
+    });
+
+    test("throws when uid=-1", async () => {
+      const { session } = createMockIServSession({ username: "test.user", routes: [] });
+      await expect(new EmailService(session).markAsRead(-1)).rejects.toThrow(
+        "uid must be a positive integer",
+      );
+    });
+  });
+
   test("sendEmail closes the SMTP transporter when sending fails", async () => {
     nodemailerMocks.sendMail.mockRejectedValueOnce(new Error("SMTP failed"));
     const { session } = createMockIServSession({ username: "test.user", routes: [] });

@@ -39,6 +39,7 @@ await api.disconnect();
     - [Get user info](#get-user-info)
     - [Search users](#search-users)
     - [Search users autocomplete](#search-users-autocomplete)
+    - [Search messenger recipients](#search-messenger-recipients)
   - [Email](#email)
     - [Get emails](#get-emails)
     - [Get message](#get-message)
@@ -64,7 +65,15 @@ await api.disconnect();
     - [Get members](#get-members)
     - [Get profile](#get-profile)
     - [Send message](#send-message)
+    - [Create direct message](#create-direct-message)
+    - [Leave room](#leave-room)
+    - [React to message](#react-to-message)
+    - [Edit message](#edit-message)
+    - [Reply to message](#reply-to-message)
+    - [Remove reaction](#remove-reaction)
+    - [Delete message](#delete-message)
     - [Send message by name](#send-message-by-name)
+    - [React to message by name](#react-to-message-by-name)
   - [Conference](#conference)
     - [Get conference health](#get-conference-health)
 - [Logging](#logging)
@@ -172,6 +181,15 @@ const results = await api.users.searchAutocomplete("ali", 10);
 ```
 
 Faster autocomplete search. Returns up to `limit` results (default 50).
+
+#### Search messenger recipients
+
+```ts
+const recipients = await api.users.searchMessengerRecipients("Alice Example");
+const alice = recipients[0];
+```
+
+Searches IServ's messenger recipient autocomplete endpoint. This is useful for messenger operations such as `createDirectMessage()`, where the returned `value` is the recipient identifier expected by IServ.
 
 ---
 
@@ -459,6 +477,81 @@ An optional `txnId` can be passed as a third argument for idempotency — if the
 await api.messenger.sendMessage(roomId, "Hello!", "my-unique-id");
 ```
 
+#### Create direct message
+
+```ts
+const recipients = await api.users.searchMessengerRecipients("Alice Example");
+const alice = recipients[0];
+
+if (!alice) throw new Error("User not found");
+
+const { roomId } = await api.messenger.createDirectMessage(alice.value);
+```
+
+Creates or opens a direct message room using IServ's messenger form flow. The `matrixId` argument should usually come from `api.users.searchMessengerRecipients(...)[n].value`. Returns the Matrix `roomId`.
+
+#### Leave room
+
+```ts
+await api.messenger.leaveRoom(roomId);
+```
+
+Leaves a Matrix room by room ID.
+
+#### React to message
+
+```ts
+const result = await api.messenger.reactToMessage(roomId, eventId, "👍");
+console.log(result.eventId);
+```
+
+Adds a reaction to a message. Pass an optional fourth `txnId` for idempotency.
+
+#### Edit message
+
+```ts
+const result = await api.messenger.editMessage(roomId, eventId, "Updated text");
+console.log(result.eventId);
+```
+
+Sends a Matrix replacement event for an existing text message. Pass an optional fourth `txnId` for idempotency.
+
+#### Reply to message
+
+```ts
+const result = await api.messenger.replyToMessage(
+  roomId,
+  {
+    eventId: "$original-event:server",
+    sender: "@alice:server",
+    body: "Original message",
+  },
+  "Thanks!",
+);
+
+console.log(result.eventId);
+```
+
+Sends a text reply using Matrix reply metadata and formatted fallback HTML. Pass an optional fourth `txnId` for idempotency.
+
+#### Remove reaction
+
+```ts
+const result = await api.messenger.removeReaction(roomId, reactionEventId);
+console.log(result.eventId);
+```
+
+Redacts a reaction event. Throws a descriptive error when the reaction does not exist or the current user is not allowed to remove it.
+
+#### Delete message
+
+```ts
+const result = await api.messenger.deleteMessage(roomId, eventId);
+console.log(result.eventId);
+```
+
+Redacts a message event. Throws a descriptive error when the message does not exist or the current user is not allowed to delete it.
+
 #### Send message by name
 
 ```ts
@@ -469,6 +562,17 @@ console.log(result.eventId);
 Looks up the room by display name and sends a text message. Throws if no room or multiple rooms match the name. Accepts an optional `txnId` as a third argument, same as `sendMessage()`.
 
 > **Note:** This method calls `getRooms()` internally, which makes an extra network request. If you already have the room ID, prefer `sendMessage()` directly.
+
+#### React to message by name
+
+```ts
+const result = await api.messenger.reactToMessageByName("Max Mustermann", eventId, "👍");
+console.log(result.eventId);
+```
+
+Looks up the room by display name and reacts to a message. Throws if no room or multiple rooms match the name. Accepts an optional `txnId` as a fourth argument, same as `reactToMessage()`.
+
+> **Note:** This method calls `getRooms()` internally, which makes an extra network request. If you already have the room ID, prefer `reactToMessage()` directly.
 
 ---
 

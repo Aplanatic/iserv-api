@@ -22,9 +22,6 @@ describe("IServSession matrix token", () => {
 
 describe("AuthService matrix token extraction", () => {
   const USER_ID = "abc-123";
-  const messengerHtml = `<script id="php-data">${JSON.stringify({ iserv_user_id: USER_ID })}</script>`;
-  const matrixBase = "https://iserv.example/_matrix/client/v3";
-
   const loginRoutes = [
     {
       method: "get" as const,
@@ -54,12 +51,12 @@ describe("AuthService matrix token extraction", () => {
         {
           method: "get" as const,
           url: "https://iserv.example/iserv/messenger/",
-          response: { data: messengerHtml },
+          response: { data: "<html>messenger app</html>" },
         },
         {
           method: "post" as const,
-          url: `${matrixBase}/login`,
-          headers: { "Content-Type": "application/json" },
+          url: "https://iserv.example/iserv/messenger/authenticate",
+          headers: { Accept: "*/*", Origin: "https://iserv.example" },
           response: {
             data: JSON.stringify({
               access_token: "syt_abc_xyz",
@@ -76,18 +73,32 @@ describe("AuthService matrix token extraction", () => {
     expectAllRoutesCalled();
   });
 
-  test("throws when messenger page has no iserv_user_id", async () => {
-    const { session } = createMockIServSession({
+  test("stores matrix user ID returned by messenger authentication", async () => {
+    const { session, expectAllRoutesCalled } = createMockIServSession({
       routes: [
         ...loginRoutes,
         {
           method: "get" as const,
           url: "https://iserv.example/iserv/messenger/",
-          response: { data: "<html>no php-data here</html>" },
+          response: { data: "<html>messenger app without php-data</html>" },
+        },
+        {
+          method: "post" as const,
+          url: "https://iserv.example/iserv/messenger/authenticate",
+          headers: { Accept: "*/*", Origin: "https://iserv.example" },
+          response: {
+            data: JSON.stringify({
+              access_token: "syt_abc_xyz",
+              user_id: `@${USER_ID}:iserv.example`,
+            }),
+          },
         },
       ],
     });
 
-    await expect(new AuthService(session).login()).rejects.toThrow("Could not retrieve user ID");
+    await new AuthService(session).login();
+
+    expect(session.matrixUserId).toBe(`@${USER_ID}:iserv.example`);
+    expectAllRoutesCalled();
   });
 });

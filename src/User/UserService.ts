@@ -215,6 +215,15 @@ export class UserService {
     return parseJson<UserAutocompleteResult[]>(res.data, "user autocomplete");
   }
 
+  async searchMessengerRecipients(query: string, limit = 10): Promise<UserAutocompleteResult[]> {
+    const res = await this.session.http.get(
+      `${this.session.baseUrl()}/iserv/autocomplete/api/autocomplete`,
+      { params: { type: "userid", query, limit } },
+    );
+    log.info("Searched messenger recipients");
+    return parseJson<UserAutocompleteResult[]>(res.data, "messenger recipient autocomplete");
+  }
+
   async getProfilePictureBuffer(
     username: string,
     width?: number,

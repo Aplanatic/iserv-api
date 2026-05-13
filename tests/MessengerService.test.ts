@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { IServApiError } from "../src/Core/Errors.js";
 import { MessengerService } from "../src/Messenger/MessengerService.js";
 import { createMockIServSession } from "./helpers/mockIServSession.js";
 
@@ -374,6 +375,60 @@ describe("MessengerService.sendMessage()", () => {
   });
 });
 
+describe("MessengerService.leaveRoom()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+
+  test("posts an empty JSON body to the Matrix leave endpoint", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "post",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/leave`,
+        headers: {
+          Authorization: `Bearer ${MATRIX_TOKEN}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Origin: "https://iserv.example",
+        },
+        response: { data: JSON.stringify({}) },
+      },
+    ]);
+
+    await new MessengerService(session).leaveRoom(ROOM_ID);
+
+    expect(calls[0]?.body).toBe("{}");
+    expectAllRoutesCalled();
+  });
+
+  test("encodes room IDs in the leave URL", async () => {
+    const roomId = "!room/with?chars:server";
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "post",
+        url: `${MATRIX_BASE}/rooms/${encodeURIComponent(roomId)}/leave`,
+        headers: {
+          Authorization: `Bearer ${MATRIX_TOKEN}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Origin: "https://iserv.example",
+        },
+        response: { data: JSON.stringify({}) },
+      },
+    ]);
+
+    await new MessengerService(session).leaveRoom(roomId);
+    expectAllRoutesCalled();
+  });
+
+  test("throws when Matrix token is missing", async () => {
+    const { session } = createMockIServSession({ routes: [] });
+
+    await expect(new MessengerService(session).leaveRoom(ROOM_ID)).rejects.toThrow(
+      "Matrix token is missing",
+    );
+  });
+});
+
 describe("MessengerService.sendMessageByName()", () => {
   const ROOM_ID = "!testroom:server";
   const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
@@ -410,7 +465,11 @@ describe("MessengerService.sendMessageByName()", () => {
       },
     ]);
 
-    const result = await new MessengerService(session).sendMessageByName("Test Room", "Hello!", "test-txn");
+    const result = await new MessengerService(session).sendMessageByName(
+      "Test Room",
+      "Hello!",
+      "test-txn",
+    );
 
     expect(result.eventId).toBe("$abc123:server");
     expect(calls[1]?.body).toBe(JSON.stringify({ msgtype: "m.text", body: "Hello!" }));
@@ -428,9 +487,9 @@ describe("MessengerService.sendMessageByName()", () => {
       },
     ]);
 
-    await expect(
-      new MessengerService(session).sendMessageByName("Nobody", "Hi"),
-    ).rejects.toThrow(`No room found with name "Nobody"`);
+    await expect(new MessengerService(session).sendMessageByName("Nobody", "Hi")).rejects.toThrow(
+      `No room found with name "Nobody"`,
+    );
   });
 
   test("throws when multiple rooms match the name", async () => {
@@ -466,5 +525,493 @@ describe("MessengerService.sendMessageByName()", () => {
     await expect(
       new MessengerService(session).sendMessageByName("Same Name", "Hi"),
     ).rejects.toThrow(`Multiple rooms found with name "Same Name"`);
+  });
+});
+
+describe("MessengerService.reactToMessage()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const EVENT_ID = "$lMGK1fUJfrFLrKgxEy711dqAr";
+
+  test("sends a reaction to a message", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.reaction/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$reaction123:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).reactToMessage(
+      ROOM_ID,
+      EVENT_ID,
+      "👍",
+      "test-txn",
+    );
+
+    expect(result.eventId).toBe("$reaction123:server");
+    expect(calls[0]?.body).toBe(
+      JSON.stringify({
+        "m.relates_to": { rel_type: "m.annotation", event_id: EVENT_ID, key: "👍" },
+      }),
+    );
+    expectAllRoutesCalled();
+  });
+});
+
+describe("MessengerService.createDirectMessage()", () => {
+  const FORM_URL = "https://iserv.example/iserv/messenger/form/directmessage/create";
+  const FORM_ACTION_URL = "https://iserv.example/iserv/messenger/form/directmessage/create?modal=1";
+  const MATRIX_ID = "userid:3a1a62a5-fedf-4ad0-aa72-80160fe7d13a";
+  const CSRF_TOKEN = "csrf-test-token-123";
+  const FORM_HTML = `
+    <form action="/iserv/messenger/form/directmessage/create?modal=1">
+      <input type="hidden" name="directmessage[_token]" value="${CSRF_TOKEN}" />
+    </form>
+  `;
+  const AJAX_HEADERS = {
+    Accept: "text/html, */*; q=0.01",
+    "X-Requested-With": "XMLHttpRequest",
+  };
+  const POST_HEADERS = {
+    ...AJAX_HEADERS,
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    Origin: "https://iserv.example",
+  };
+
+  test("fetches the direct-message form token via XHR then POSTs HAR-compatible form data", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: FORM_URL,
+        headers: AJAX_HEADERS,
+        response: { data: FORM_HTML },
+      },
+      {
+        method: "post",
+        url: FORM_ACTION_URL,
+        headers: POST_HEADERS,
+        response: { data: JSON.stringify({ room_id: "!newroom:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).createDirectMessage(MATRIX_ID);
+
+    expect(result.roomId).toBe("!newroom:server");
+    const postBody = new URLSearchParams(calls[1]?.body ?? "");
+    expect(postBody.get("directmessage[matrix_id]")).toBe(MATRIX_ID);
+    expect(postBody.get("directmessage[_token]")).toBe(CSRF_TOKEN);
+    expect(postBody.get("directmessage[submit]")).toBe("");
+    expect(calls[1]?.body).toBe(
+      "directmessage%5Bmatrix_id%5D=userid%3A3a1a62a5-fedf-4ad0-aa72-80160fe7d13a&directmessage%5B_token%5D=csrf-test-token-123&directmessage%5Bsubmit%5D=",
+    );
+    expectAllRoutesCalled();
+  });
+
+  test("falls back to the legacy directmessage__token id when no named token exists", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: FORM_URL,
+        headers: AJAX_HEADERS,
+        response: {
+          data: `<html><body><input id="directmessage__token" value="${CSRF_TOKEN}" /></body></html>`,
+        },
+      },
+      {
+        method: "post",
+        url: FORM_URL,
+        headers: POST_HEADERS,
+        response: { data: JSON.stringify({ room_id: "!legacytoken:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).createDirectMessage(MATRIX_ID);
+
+    expect(result.roomId).toBe("!legacytoken:server");
+    const postBody = new URLSearchParams(calls[1]?.body ?? "");
+    expect(postBody.get("directmessage[_token]")).toBe(CSRF_TOKEN);
+    expectAllRoutesCalled();
+  });
+
+  test("throws when CSRF token is missing from form HTML", async () => {
+    const { session } = buildMockSession([
+      {
+        method: "get",
+        url: FORM_URL,
+        headers: AJAX_HEADERS,
+        response: { data: "<html><body>no token here</body></html>" },
+      },
+    ]);
+
+    await expect(new MessengerService(session).createDirectMessage(MATRIX_ID)).rejects.toThrow(
+      "CSRF token",
+    );
+  });
+
+  test("throws when the response does not include room_id", async () => {
+    const { session } = buildMockSession([
+      {
+        method: "get",
+        url: FORM_URL,
+        headers: AJAX_HEADERS,
+        response: { data: FORM_HTML },
+      },
+      {
+        method: "post",
+        url: FORM_ACTION_URL,
+        headers: POST_HEADERS,
+        response: { data: JSON.stringify({}) },
+      },
+    ]);
+
+    await expect(new MessengerService(session).createDirectMessage(MATRIX_ID)).rejects.toThrow(
+      "room_id",
+    );
+  });
+});
+
+describe("MessengerService.editMessage()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const EVENT_ID = "$original123:server";
+
+  test("sends an edit with correct Matrix replace format", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.room.message/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$edit456:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).editMessage(
+      ROOM_ID,
+      EVENT_ID,
+      "edited text",
+      "test-txn",
+    );
+
+    expect(result.eventId).toBe("$edit456:server");
+
+    const body = JSON.parse(calls[0]?.body ?? "{}");
+    expect(body.msgtype).toBe("m.text");
+    expect(body.body).toBe(" * edited text");
+    expect(body["m.relates_to"]).toEqual({ rel_type: "m.replace", event_id: EVENT_ID });
+    expect(body["m.new_content"]).toEqual({ msgtype: "m.text", body: "edited text" });
+    expectAllRoutesCalled();
+  });
+
+  test("encodes roomId and txnId in the URL", async () => {
+    const txnId = "txn/with?chars";
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.room.message/${encodeURIComponent(txnId)}`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$edit789:server" }) },
+      },
+    ]);
+
+    await new MessengerService(session).editMessage(ROOM_ID, EVENT_ID, "new text", txnId);
+    expectAllRoutesCalled();
+  });
+});
+
+describe("MessengerService.replyToMessage()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const ORIGINAL = {
+    eventId: "$original123:server",
+    sender: "@alice:server",
+    body: "Original message",
+  };
+
+  test("sends a reply with correct Matrix reply format", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.room.message/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$reply456:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).replyToMessage(
+      ROOM_ID,
+      ORIGINAL,
+      "My reply",
+      "test-txn",
+    );
+
+    expect(result.eventId).toBe("$reply456:server");
+
+    const body = JSON.parse(calls[0]?.body ?? "{}");
+    expect(body.msgtype).toBe("m.text");
+    expect(body["m.relates_to"]).toEqual({ "m.in_reply_to": { event_id: ORIGINAL.eventId } });
+    expect(body.body).toContain(ORIGINAL.body);
+    expect(body.body).toContain("My reply");
+    expect(body.formatted_body).toContain(ORIGINAL.eventId);
+    expect(body.formatted_body).toContain(ORIGINAL.sender);
+    expect(body.formatted_body).toContain("My reply");
+    expectAllRoutesCalled();
+  });
+
+  test("escapes HTML in the formatted reply body", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.room.message/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$reply456:server" }) },
+      },
+    ]);
+
+    await new MessengerService(session).replyToMessage(
+      ROOM_ID,
+      {
+        eventId: "$orig<script>:server",
+        sender: '@alice:server" onclick="bad',
+        body: '<img src=x onerror="bad()">',
+      },
+      'Thanks <b onclick="bad()">Alice</b>',
+      "test-txn",
+    );
+
+    const body = JSON.parse(calls[0]?.body ?? "{}");
+    expect(body.body).toContain('<img src=x onerror="bad()">');
+    expect(body.formatted_body).not.toContain("<img");
+    expect(body.formatted_body).not.toContain("<b onclick");
+    expect(body.formatted_body).toContain("&lt;img src=x onerror=&quot;bad()&quot;&gt;");
+    expect(body.formatted_body).toContain("Thanks &lt;b onclick=&quot;bad()&quot;&gt;Alice&lt;/b&gt;");
+    expectAllRoutesCalled();
+  });
+
+  test("encodes the txnId in the URL", async () => {
+    const txnId = "txn/with?chars";
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.room.message/${encodeURIComponent(txnId)}`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$reply789:server" }) },
+      },
+    ]);
+
+    await new MessengerService(session).replyToMessage(ROOM_ID, ORIGINAL, "Reply", txnId);
+    expectAllRoutesCalled();
+  });
+});
+
+describe("MessengerService.removeReaction()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const REACTION_EVENT_ID = "$reaction123:server";
+  const ENCODED_REACTION_EVENT = encodeURIComponent(REACTION_EVENT_ID);
+
+  test("calls the redact endpoint and returns the event ID", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_REACTION_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$redact456:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).removeReaction(
+      ROOM_ID,
+      REACTION_EVENT_ID,
+      "test-txn",
+    );
+
+    expect(result.eventId).toBe("$redact456:server");
+    expect(calls[0]?.body).toBe("{}");
+    expectAllRoutesCalled();
+  });
+
+  test("throws a descriptive error when the reaction event is not found (404)", async () => {
+    const notFound = new IServApiError("HTTP 404", 404);
+
+    const { session } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_REACTION_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { error: notFound },
+      },
+    ]);
+
+    await expect(
+      new MessengerService(session).removeReaction(ROOM_ID, REACTION_EVENT_ID, "test-txn"),
+    ).rejects.toThrow(`Reaction "${REACTION_EVENT_ID}" not found`);
+  });
+
+  test("throws a descriptive error when not authorized to remove the reaction (403)", async () => {
+    const forbidden = new IServApiError("HTTP 403", 403);
+
+    const { session } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_REACTION_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { error: forbidden },
+      },
+    ]);
+
+    await expect(
+      new MessengerService(session).removeReaction(ROOM_ID, REACTION_EVENT_ID, "test-txn"),
+    ).rejects.toThrow(`Not authorized to remove reaction "${REACTION_EVENT_ID}"`);
+  });
+
+  test("rethrows unknown errors unchanged", async () => {
+    const unexpected = new Error("Network failure");
+
+    const { session } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_REACTION_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { error: unexpected },
+      },
+    ]);
+
+    await expect(
+      new MessengerService(session).removeReaction(ROOM_ID, REACTION_EVENT_ID, "test-txn"),
+    ).rejects.toThrow("Network failure");
+  });
+});
+
+describe("MessengerService.deleteMessage()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const MESSAGE_EVENT_ID = "$msg123:server";
+  const ENCODED_MESSAGE_EVENT = encodeURIComponent(MESSAGE_EVENT_ID);
+
+  test("calls the redact endpoint and returns the event ID", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_MESSAGE_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$redact789:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).deleteMessage(
+      ROOM_ID,
+      MESSAGE_EVENT_ID,
+      "test-txn",
+    );
+
+    expect(result.eventId).toBe("$redact789:server");
+    expect(calls[0]?.body).toBe("{}");
+    expectAllRoutesCalled();
+  });
+
+  test("throws a descriptive error when the message event is not found (404)", async () => {
+    const notFound = new IServApiError("HTTP 404", 404);
+
+    const { session } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_MESSAGE_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { error: notFound },
+      },
+    ]);
+
+    await expect(
+      new MessengerService(session).deleteMessage(ROOM_ID, MESSAGE_EVENT_ID, "test-txn"),
+    ).rejects.toThrow(`Message "${MESSAGE_EVENT_ID}" not found`);
+  });
+
+  test("throws a descriptive error when not authorized (403)", async () => {
+    const forbidden = new IServApiError("HTTP 403", 403);
+
+    const { session } = buildMockSession([
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/redact/${ENCODED_MESSAGE_EVENT}/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { error: forbidden },
+      },
+    ]);
+
+    await expect(
+      new MessengerService(session).deleteMessage(ROOM_ID, MESSAGE_EVENT_ID, "test-txn"),
+    ).rejects.toThrow(`Not authorized to delete message "${MESSAGE_EVENT_ID}"`);
+  });
+});
+
+describe("MessengerService.reactToMessageByName()", () => {
+  const ROOM_ID = "!testroom:server";
+  const ENCODED_ROOM = encodeURIComponent(ROOM_ID);
+  const EVENT_ID = "$someEvent";
+  const SYNC_FILTER = JSON.stringify({ room: { timeline: { limit: 1 } } });
+
+  const SYNC_RESPONSE = JSON.stringify({
+    next_batch: "s1",
+    rooms: {
+      join: {
+        [ROOM_ID]: {
+          timeline: { events: [] },
+          state: { events: [{ type: "m.room.name", content: { name: "Test Room" } }] },
+          unread_notifications: { notification_count: 0 },
+        },
+      },
+    },
+    account_data: { events: [] },
+  });
+
+  test("looks up the room by name and reacts to a message", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: SYNC_FILTER, timeout: 0 },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: SYNC_RESPONSE },
+      },
+      {
+        method: "put",
+        url: `${MATRIX_BASE}/rooms/${ENCODED_ROOM}/send/m.reaction/test-txn`,
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}`, "Content-Type": "application/json" },
+        response: { data: JSON.stringify({ event_id: "$reaction456:server" }) },
+      },
+    ]);
+
+    const result = await new MessengerService(session).reactToMessageByName(
+      "Test Room",
+      EVENT_ID,
+      "❤️",
+      "test-txn",
+    );
+
+    expect(result.eventId).toBe("$reaction456:server");
+    expect(calls[1]?.body).toBe(
+      JSON.stringify({
+        "m.relates_to": { rel_type: "m.annotation", event_id: EVENT_ID, key: "❤️" },
+      }),
+    );
+    expectAllRoutesCalled();
+  });
+
+  test("throws when no room matches the name", async () => {
+    const { session } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: SYNC_FILTER, timeout: 0 },
+        headers: { Authorization: `Bearer ${MATRIX_TOKEN}` },
+        response: { data: SYNC_RESPONSE },
+      },
+    ]);
+
+    await expect(
+      new MessengerService(session).reactToMessageByName("Nobody", EVENT_ID, "👍"),
+    ).rejects.toThrow(`No room found with name "Nobody"`);
   });
 });

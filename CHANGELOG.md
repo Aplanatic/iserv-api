@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0 - 2026-05-13
+
+### Added
+
+- Added Messenger direct-message creation with `api.messenger.createDirectMessage(matrixId)`.
+- Added Messenger room leaving with `api.messenger.leaveRoom(roomId)`.
+- Added Messenger reactions with `api.messenger.reactToMessage(roomId, eventId, emoji)` and `api.messenger.reactToMessageByName(name, eventId, emoji)`.
+- Added Messenger message editing, replying, reaction removal, and message deletion with `editMessage`, `replyToMessage`, `removeReaction`, and `deleteMessage`.
+- Added `api.users.searchMessengerRecipients(query, limit?)` to find IServ messenger recipients for direct-message creation.
+
+### Changed
+
+- Messenger login now uses IServ's `/iserv/messenger/authenticate` flow instead of direct Matrix password login.
+- Documented the new Messenger APIs in the README.
+
 ## 1.3.2 - 2026-05-12
 
 ### Added

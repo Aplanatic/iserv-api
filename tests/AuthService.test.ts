@@ -9,8 +9,7 @@ type HttpCall = {
 };
 
 const MOCK_USER_ID = "abc-123";
-const MESSENGER_HTML = `<script id="php-data">${JSON.stringify({ iserv_user_id: MOCK_USER_ID })}</script>`;
-const MATRIX_LOGIN_RESPONSE = JSON.stringify({
+const MESSENGER_AUTH_RESPONSE = JSON.stringify({
   access_token: "syt_test",
   user_id: `@${MOCK_USER_ID}:iserv.example`,
 });
@@ -65,7 +64,7 @@ describe("AuthService.login", () => {
           },
           { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
           {
-            data: MESSENGER_HTML,
+            data: "<main>messenger app</main>",
             status: 200,
             headers: {},
             url: "https://iserv.example/iserv/messenger/",
@@ -74,10 +73,10 @@ describe("AuthService.login", () => {
         post: [
           { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
           {
-            data: MATRIX_LOGIN_RESPONSE,
+            data: MESSENGER_AUTH_RESPONSE,
             status: 200,
             headers: {},
-            url: "https://iserv.example/_matrix/client/v3/login",
+            url: "https://iserv.example/iserv/messenger/authenticate",
           },
         ],
       },

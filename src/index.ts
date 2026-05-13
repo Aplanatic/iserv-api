@@ -3,6 +3,7 @@ export { IServAPI } from "./Core/IServClient.js";
 export type { PatchMessageResult } from "./Email/EmailTypes.js";
 export { MessengerService } from "./Messenger/MessengerService.js";
 export type {
+  CreateDirectMessageResult,
   Member,
   Message,
   MessagesResult,

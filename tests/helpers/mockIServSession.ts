@@ -30,12 +30,18 @@ export type MockRoute = {
   params?: Record<string, string | number | boolean>;
   headers?: Record<string, string>;
   responseType?: string;
-  response: {
-    data: string | Buffer;
-    status?: number;
-    headers?: Record<string, string>;
-    url?: string;
-  };
+  response:
+    | {
+        data: string | Buffer;
+        status?: number;
+        headers?: Record<string, string>;
+        url?: string;
+        error?: never;
+      }
+    | {
+        error: Error;
+        data?: never;
+      };
 };
 
 type MockSessionOptions = {
@@ -83,6 +89,7 @@ function findRoute(routes: MockRoute[], call: MockHttpCall): MockRoute {
 }
 
 function routeResponse(route: MockRoute, url: string): MockHttpResponse {
+  if (route.response.error) throw route.response.error;
   return {
     data: route.response.data,
     status: route.response.status ?? 200,
@@ -104,6 +111,7 @@ export function createMockIServSession({
   const pendingRoutes = [...routes];
   const calls: MockHttpCall[] = [];
   let _matrixToken: string | null = null;
+  let _matrixUserId: string | null = null;
 
   const http = {
     get: async (url: string, config: HttpConfig = {}) => {
@@ -146,8 +154,12 @@ export function createMockIServSession({
       get matrixToken() {
         return _matrixToken;
       },
-      setMatrixToken: (token: string) => {
+      get matrixUserId() {
+        return _matrixUserId;
+      },
+      setMatrixToken: (token: string, userId?: string) => {
         _matrixToken = token;
+        if (userId) _matrixUserId = userId;
       },
       getPassword: () => password,
       http,

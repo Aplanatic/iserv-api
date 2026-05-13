@@ -46,6 +46,10 @@ export interface UserProfile {
   avatarUrl: string | null;
 }
 
+export interface CreateDirectMessageResult {
+  roomId: string;
+}
+
 export interface MatrixSyncResponse {
   next_batch: string;
   rooms?: {

@@ -4,8 +4,11 @@ export type { PatchMessageResult } from "./Email/EmailTypes.js";
 export { MessengerService } from "./Messenger/MessengerService.js";
 export type {
   CreateDirectMessageResult,
+  ListenOptions,
   Member,
   Message,
+  MessageEvent,
+  MessageListener,
   MessagesResult,
   Room,
   RoomLastMessage,

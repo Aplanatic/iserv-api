@@ -223,7 +223,7 @@ describe("MessengerService.getMessages()", () => {
     expect(result.messages[0].senderName).toBe("Alice");
     expect(result.messages[1].encrypted).toBe(true);
     expect(result.messages[1].body).toBe("");
-    expect(result.messages[1].senderName).toBeNull();
+    expect(result.messages[1].senderName).toBe("@bob:server");
     expectAllRoutesCalled();
   });
 
@@ -785,7 +785,9 @@ describe("MessengerService.replyToMessage()", () => {
     expect(body.formatted_body).not.toContain("<img");
     expect(body.formatted_body).not.toContain("<b onclick");
     expect(body.formatted_body).toContain("&lt;img src=x onerror=&quot;bad()&quot;&gt;");
-    expect(body.formatted_body).toContain("Thanks &lt;b onclick=&quot;bad()&quot;&gt;Alice&lt;/b&gt;");
+    expect(body.formatted_body).toContain(
+      "Thanks &lt;b onclick=&quot;bad()&quot;&gt;Alice&lt;/b&gt;",
+    );
     expectAllRoutesCalled();
   });
 
@@ -832,7 +834,7 @@ describe("MessengerService.removeReaction()", () => {
     expectAllRoutesCalled();
   });
 
-  test("throws a descriptive error when the reaction event is not found (404)", async () => {
+  test("throws when the reaction event is not found (404)", async () => {
     const notFound = new IServApiError("HTTP 404", 404);
 
     const { session } = buildMockSession([
@@ -849,7 +851,7 @@ describe("MessengerService.removeReaction()", () => {
     ).rejects.toThrow(`Reaction "${REACTION_EVENT_ID}" not found`);
   });
 
-  test("throws a descriptive error when not authorized to remove the reaction (403)", async () => {
+  test("throws when not authorized to remove the reaction (403)", async () => {
     const forbidden = new IServApiError("HTTP 403", 403);
 
     const { session } = buildMockSession([
@@ -911,7 +913,7 @@ describe("MessengerService.deleteMessage()", () => {
     expectAllRoutesCalled();
   });
 
-  test("throws a descriptive error when the message event is not found (404)", async () => {
+  test("throws when the message event is not found (404)", async () => {
     const notFound = new IServApiError("HTTP 404", 404);
 
     const { session } = buildMockSession([
@@ -943,6 +945,241 @@ describe("MessengerService.deleteMessage()", () => {
     await expect(
       new MessengerService(session).deleteMessage(ROOM_ID, MESSAGE_EVENT_ID, "test-txn"),
     ).rejects.toThrow(`Not authorized to delete message "${MESSAGE_EVENT_ID}"`);
+  });
+});
+
+describe("MessengerService.listenForMessages()", () => {
+  const LISTEN_FILTER = JSON.stringify({
+    room: { timeline: { types: ["m.room.message"] } },
+  });
+
+  const ROOM_ID = "!room1:server";
+  const AUTH_HEADER = { Authorization: `Bearer ${MATRIX_TOKEN}` };
+
+  function makeSyncResponse(
+    nextBatch: string,
+    messages: Array<{ eventId: string; body: string; sender: string }> = [],
+  ) {
+    return JSON.stringify({
+      next_batch: nextBatch,
+      rooms:
+        messages.length === 0
+          ? undefined
+          : {
+              join: {
+                [ROOM_ID]: {
+                  timeline: {
+                    events: messages.map((m) => ({
+                      type: "m.room.message",
+                      event_id: m.eventId,
+                      sender: m.sender,
+                      origin_server_ts: Date.now(),
+                      content: { msgtype: "m.text", body: m.body },
+                    })),
+                  },
+                  state: {
+                    events: [{ type: "m.room.name", content: { name: "Test Room" } }],
+                  },
+                },
+              },
+            },
+    });
+  }
+
+  test("emits new messages received via long-poll", async () => {
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { timeout: 0 },
+        headers: AUTH_HEADER,
+        response: { data: makeSyncResponse("s_init") },
+      },
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: LISTEN_FILTER, timeout: 30000, since: "s_init" },
+        headers: AUTH_HEADER,
+        response: {
+          data: makeSyncResponse("s2", [
+            { eventId: "$ev1", body: "Hello!", sender: "@alice:server" },
+          ]),
+        },
+      },
+    ]);
+
+    const received: Array<{ roomId: string; roomName: string; body: string }> = [];
+    let resolveStop!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveStop = r;
+    });
+
+    const listener = await new MessengerService(session).listenForMessages((event) => {
+      received.push({ roomId: event.roomId, roomName: event.roomName, body: event.message.body });
+      listener.stop();
+      resolveStop();
+    });
+
+    await done;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(received).toHaveLength(1);
+    expect(received[0]?.roomId).toBe(ROOM_ID);
+    expect(received[0]?.roomName).toBe("Test Room");
+    expect(received[0]?.body).toBe("Hello!");
+    expectAllRoutesCalled();
+  });
+
+  test("passes the since token from each response to the next request", async () => {
+    const { session, calls, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { timeout: 0 },
+        headers: AUTH_HEADER,
+        response: { data: makeSyncResponse("tok_abc") },
+      },
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: LISTEN_FILTER, timeout: 30000, since: "tok_abc" },
+        headers: AUTH_HEADER,
+        response: {
+          data: makeSyncResponse("tok_def", [
+            { eventId: "$ev2", body: "Hi", sender: "@bob:server" },
+          ]),
+        },
+      },
+    ]);
+
+    let resolveStop!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveStop = r;
+    });
+
+    const listener = await new MessengerService(session).listenForMessages(() => {
+      listener.stop();
+      resolveStop();
+    });
+
+    await done;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls[1]?.config.params?.since).toBe("tok_abc");
+    expectAllRoutesCalled();
+  });
+
+  test("only emits messages from rooms matching the roomIds filter", async () => {
+    const OTHER_ROOM = "!other:server";
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { timeout: 0 },
+        headers: AUTH_HEADER,
+        response: { data: makeSyncResponse("s_init") },
+      },
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: LISTEN_FILTER, timeout: 30000, since: "s_init" },
+        headers: AUTH_HEADER,
+        response: {
+          data: JSON.stringify({
+            next_batch: "s2",
+            rooms: {
+              join: {
+                [ROOM_ID]: {
+                  timeline: {
+                    events: [
+                      {
+                        type: "m.room.message",
+                        event_id: "$ev1",
+                        sender: "@a:s",
+                        origin_server_ts: Date.now() + 60000,
+                        content: { msgtype: "m.text", body: "included" },
+                      },
+                    ],
+                  },
+                  state: { events: [] },
+                },
+                [OTHER_ROOM]: {
+                  timeline: {
+                    events: [
+                      {
+                        type: "m.room.message",
+                        event_id: "$ev2",
+                        sender: "@b:s",
+                        origin_server_ts: Date.now() + 60000,
+                        content: { msgtype: "m.text", body: "excluded" },
+                      },
+                    ],
+                  },
+                  state: { events: [] },
+                },
+              },
+            },
+          }),
+        },
+      },
+    ]);
+
+    const bodies: string[] = [];
+    let resolveStop!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveStop = r;
+    });
+
+    const listener = await new MessengerService(session).listenForMessages(
+      (event) => {
+        bodies.push(event.message.body);
+        listener.stop();
+        resolveStop();
+      },
+      { roomIds: [ROOM_ID] },
+    );
+
+    await done;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(bodies).toEqual(["included"]);
+    expectAllRoutesCalled();
+  });
+
+  test("calls onError when a sync request throws", async () => {
+    const networkError = new Error("Network failure");
+    const { session, expectAllRoutesCalled } = buildMockSession([
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { timeout: 0 },
+        headers: AUTH_HEADER,
+        response: { data: makeSyncResponse("s_init") },
+      },
+      {
+        method: "get",
+        url: `${MATRIX_BASE}/sync`,
+        params: { filter: LISTEN_FILTER, timeout: 30000, since: "s_init" },
+        headers: AUTH_HEADER,
+        response: { error: networkError },
+      },
+    ]);
+
+    let receivedError: Error | undefined;
+    let resolveStop!: () => void;
+    const done = new Promise<void>((r) => {
+      resolveStop = r;
+    });
+
+    const listener = await new MessengerService(session).listenForMessages(() => {}, {
+      onError: (err) => {
+        receivedError = err;
+        listener.stop();
+        resolveStop();
+      },
+    });
+
+    await done;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(receivedError?.message).toBe("Network failure");
+    expectAllRoutesCalled();
   });
 });
 

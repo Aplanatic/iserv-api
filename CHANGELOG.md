@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1 - 2026-05-14
+
+### Added
+
+- Added `api.messenger.listenForMessages(callback, options?)` for real-time message listening via Matrix long-polling. The callback receives the `MessageEvent` and a `stop()` function to stop listening from within the callback.
+
+### Changed
+
+- `Message.senderName` and `RoomLastMessage.senderName` are now always `string` instead of `string | null`. When no display name is available, the Matrix user ID is used as fallback.
+
 ## 1.4.0 - 2026-05-13
 
 ### Added

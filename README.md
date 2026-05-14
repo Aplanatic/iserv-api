@@ -74,6 +74,7 @@ await api.disconnect();
     - [Delete message](#delete-message)
     - [Send message by name](#send-message-by-name)
     - [React to message by name](#react-to-message-by-name)
+    - [Listen for messages](#listen-for-messages)
   - [Conference](#conference)
     - [Get conference health](#get-conference-health)
 - [Logging](#logging)
@@ -414,7 +415,7 @@ Each room has:
 | `unreadCount` | `number` | Unread message count |
 | `lastMessage` | `RoomLastMessage \| null` | Most recent message |
 
-`lastMessage` fields: `body`, `sender` (Matrix user ID), `senderName` (display name or `null`), `timestamp`.
+`lastMessage` fields: `body`, `sender` (Matrix user ID), `senderName` (display name, falls back to Matrix user ID), `timestamp`.
 
 #### Get messages
 
@@ -430,7 +431,7 @@ Each message has:
 |---|---|------------------------------------------------------------------------------|
 | `eventId` | `string` | Matrix event ID                                                              |
 | `sender` | `string` | Matrix user ID                                                               |
-| `senderName` | `string \| null` | Display name                                                                 |
+| `senderName` | `string` | Display name, falls back to the Matrix user ID if unavailable                |
 | `body` | `string` | Message text, empty string if the message is end-to-end encrypted            |
 | `msgtype` | `string` | e.g. `"m.text"`, `"m.image"`, `"m.file"` — `"m.encrypted"` for E2EE messages |
 | `timestamp` | `number` | Unix ms                                                                      |
@@ -519,20 +520,14 @@ Sends a Matrix replacement event for an existing text message. Pass an optional 
 #### Reply to message
 
 ```ts
-const result = await api.messenger.replyToMessage(
-  roomId,
-  {
-    eventId: "$original-event:server",
-    sender: "@alice:server",
-    body: "Original message",
-  },
-  "Thanks!",
-);
+const { messages } = await api.messenger.getMessages(roomId, { limit: 1 });
+const original = messages[0];
 
+const result = await api.messenger.replyToMessage(roomId, original, "Thanks!");
 console.log(result.eventId);
 ```
 
-Sends a text reply using Matrix reply metadata and formatted fallback HTML. Pass an optional fourth `txnId` for idempotency.
+Sends a text reply. The second argument can be any `Message` object returned by `getMessages()`. Pass an optional fourth `txnId` for idempotency.
 
 #### Remove reaction
 
@@ -541,7 +536,7 @@ const result = await api.messenger.removeReaction(roomId, reactionEventId);
 console.log(result.eventId);
 ```
 
-Redacts a reaction event. Throws a descriptive error when the reaction does not exist or the current user is not allowed to remove it.
+Redacts a reaction event. Throws if the reaction doesn't exist or you're not allowed to remove it.
 
 #### Delete message
 
@@ -550,7 +545,7 @@ const result = await api.messenger.deleteMessage(roomId, eventId);
 console.log(result.eventId);
 ```
 
-Redacts a message event. Throws a descriptive error when the message does not exist or the current user is not allowed to delete it.
+Redacts a message event. Throws a error if the message doesn't exist or you're not allowed to delete it.
 
 #### Send message by name
 
@@ -573,6 +568,41 @@ console.log(result.eventId);
 Looks up the room by display name and reacts to a message. Throws if no room or multiple rooms match the name. Accepts an optional `txnId` as a fourth argument, same as `reactToMessage()`.
 
 > **Note:** This method calls `getRooms()` internally, which makes an extra network request. If you already have the room ID, prefer `reactToMessage()` directly.
+
+#### Listen for messages
+
+```ts
+const listener = await api.messenger.listenForMessages((event, stop) => {
+  console.log(`[${event.roomName}] ${event.message.senderName}: ${event.message.body}`);
+  stop(); // stop after first message
+});
+
+// Stop from outside the callback at any time:
+listener.stop();
+```
+
+With options:
+
+```ts
+const listener = await api.messenger.listenForMessages(
+  (event) => {
+    console.log(event.message.body);
+  },
+  {
+    pollTimeout: 10000,
+    roomIds: [roomId],
+    onError: (err) => console.error("sync error:", err),
+  },
+);
+```
+
+Starts a real-time message listener using Matrix long-polling. The callback fires for every incoming `m.room.message` event. A `stop` function is passed as the second argument to the callback for convenience.
+
+| Option | Type | Default | Description |
+|---|---|---------|---|
+| `pollTimeout` | `number` | `30000` | Long-poll timeout in ms |
+| `roomIds` | `string[]` | / | Only emit events from these room IDs |
+| `onError` | `(err: Error) => void` | / | Called on sync errors instead of logging |
 
 ---
 

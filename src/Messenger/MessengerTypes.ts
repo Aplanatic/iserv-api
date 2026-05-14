@@ -9,14 +9,14 @@ export interface Room {
 export interface RoomLastMessage {
   body: string;
   sender: string;
-  senderName: string | null;
+  senderName: string;
   timestamp: number;
 }
 
 export interface Message {
   eventId: string;
   sender: string;
-  senderName: string | null;
+  senderName: string;
   body: string;
   msgtype: string;
   timestamp: number;
@@ -48,6 +48,22 @@ export interface UserProfile {
 
 export interface CreateDirectMessageResult {
   roomId: string;
+}
+
+export interface MessageEvent {
+  roomId: string;
+  roomName: string;
+  message: Message;
+}
+
+export interface MessageListener {
+  stop(): void;
+}
+
+export interface ListenOptions {
+  pollTimeout?: number;
+  roomIds?: string[];
+  onError?: (error: Error) => void;
 }
 
 export interface MatrixSyncResponse {

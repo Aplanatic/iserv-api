@@ -8,6 +8,7 @@ const log = createLogger("MessengerService");
 
 import type {
   CreateDirectMessageResult,
+  ListenOptions,
   MatrixEvent,
   MatrixMemberEvent,
   MatrixMembersResponse,
@@ -16,6 +17,8 @@ import type {
   MatrixSyncResponse,
   Member,
   Message,
+  MessageEvent,
+  MessageListener,
   MessagesResult,
   Room,
   SendMessageResult,
@@ -24,6 +27,10 @@ import type {
 
 const SYNC_FILTER = JSON.stringify({
   room: { timeline: { limit: 1 } },
+});
+
+const LISTEN_FILTER = JSON.stringify({
+  room: { timeline: { types: ["m.room.message"] } },
 });
 
 const AJAX_FORM_HEADERS = {
@@ -119,7 +126,7 @@ export class MessengerService {
                 ? "[Encrypted message]"
                 : ((lastEvent.content.body as string) ?? ""),
             sender: lastEvent.sender ?? "",
-            senderName: nameById.get(lastEvent.sender ?? "") ?? null,
+            senderName: nameById.get(lastEvent.sender ?? "") ?? lastEvent.sender ?? "",
             timestamp: lastEvent.origin_server_ts ?? 0,
           }
         : null;
@@ -159,7 +166,7 @@ export class MessengerService {
       .map((e) => ({
         eventId: e.event_id ?? "",
         sender: e.sender ?? "",
-        senderName: nameById.get(e.sender ?? "") ?? null,
+        senderName: nameById.get(e.sender ?? "") ?? e.sender ?? "",
         body: e.type === "m.room.encrypted" ? "" : ((e.content.body as string) ?? ""),
         msgtype:
           e.type === "m.room.encrypted" ? "m.encrypted" : ((e.content.msgtype as string) ?? ""),
@@ -479,6 +486,104 @@ export class MessengerService {
       userId,
       displayName: data.displayname ?? null,
       avatarUrl: data.avatar_url ?? null,
+    };
+  }
+
+  async listenForMessages(
+    callback: (event: MessageEvent, stop: () => void) => void | Promise<void>,
+    options: ListenOptions = {},
+  ): Promise<MessageListener> {
+    const { pollTimeout = 30000, roomIds, onError } = options;
+    let stopped = false;
+    const startedAt = Date.now();
+
+    const initRes = await this.session.http.get(`${this.session.matrixBaseUrl()}/sync`, {
+      params: { timeout: 0 },
+      headers: this.authHeader(),
+    });
+    const initSync = parseJson<MatrixSyncResponse>(initRes.data, "listenForMessages:init");
+    let since = initSync.next_batch;
+
+    const roomNames = new Map<string, string>();
+    const memberNames = new Map<string, Map<string, string>>();
+    for (const [roomId, room] of Object.entries(initSync.rooms?.join ?? {})) {
+      const nameEvent = room.state.events.find((e) => e.type === "m.room.name");
+      const name = nameEvent?.content.name as string | undefined;
+      if (name) roomNames.set(roomId, name);
+      memberNames.set(roomId, this.buildNameMap(room.state.events));
+    }
+
+    const loop = async () => {
+      while (!stopped) {
+        try {
+          const res = await this.session.http.get(`${this.session.matrixBaseUrl()}/sync`, {
+            params: { filter: LISTEN_FILTER, timeout: pollTimeout, since },
+            headers: this.authHeader(),
+          });
+          const sync = parseJson<MatrixSyncResponse>(res.data, "listenForMessages:sync");
+          since = sync.next_batch;
+
+          for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
+            if (roomIds && !roomIds.includes(roomId)) continue;
+
+            const nameEvent = room.state.events.find((e) => e.type === "m.room.name");
+            if (nameEvent?.content.name) roomNames.set(roomId, nameEvent.content.name as string);
+            const freshMembers = this.buildNameMap(room.state.events);
+            const memberMap = memberNames.get(roomId) ?? new Map<string, string>();
+            for (const [uid, name] of freshMembers) memberMap.set(uid, name);
+            memberNames.set(roomId, memberMap);
+
+            const roomName = roomNames.get(roomId) ?? roomId;
+
+            for (const event of room.timeline.events) {
+              if (event.type !== "m.room.message") continue;
+              if ((event.origin_server_ts ?? 0) < startedAt) continue;
+
+              const sender = event.sender ?? "";
+              const message: Message = {
+                eventId: event.event_id ?? "",
+                sender,
+                senderName: memberNames.get(roomId)?.get(sender) ?? sender,
+                body: (event.content.body as string) ?? "",
+                msgtype: (event.content.msgtype as string) ?? "",
+                timestamp: event.origin_server_ts ?? 0,
+                encrypted: false,
+              };
+
+              try {
+                await callback({ roomId, roomName, message }, () => {
+                  stopped = true;
+                });
+              } catch (callbackErr) {
+                const err =
+                  callbackErr instanceof Error ? callbackErr : new Error(String(callbackErr));
+                if (onError) onError(err);
+                else log.error(`listenForMessages callback error: ${err.message}`);
+              }
+            }
+          }
+        } catch (error) {
+          if (stopped) break;
+          const err = error instanceof Error ? error : new Error(String(error));
+          if (onError) onError(err);
+          else log.error(`listenForMessages sync error: ${err.message}`);
+        }
+      }
+    };
+
+    queueMicrotask(() => {
+      loop().catch((err) => {
+        const e = err instanceof Error ? err : new Error(String(err));
+        if (onError) onError(e);
+        else log.error(`listenForMessages fatal: ${e.message}`);
+      });
+    });
+
+    log.debug("Message listener started");
+    return {
+      stop: () => {
+        stopped = true;
+      },
     };
   }
 }

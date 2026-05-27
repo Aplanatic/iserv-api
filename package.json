@@ -46,9 +46,9 @@
   "license": "MIT",
   "dependencies": {
     "cheerio": "^1.2.0",
-    "dayjs": "^1.11.20",
+    "dayjs": "^1.11.21",
     "got": "^15.0.5",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^8.0.9",
     "tough-cookie": "^6.0.1",
     "webdav": "^5.10.0"
   },
@@ -58,6 +58,6 @@
     "@types/tough-cookie": "^4.0.5",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.7"
   }
 }

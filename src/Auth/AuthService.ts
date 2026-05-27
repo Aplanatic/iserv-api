@@ -22,9 +22,7 @@ function resolveHtmlRedirect(html: string, baseUrl: string): string | null {
   const metaRefresh = html.match(
     /<meta\b[^>]*http-equiv\s*=\s*(?:"refresh"|'refresh'|refresh)[^>]*>/i,
   )?.[0];
-  const content = metaRefresh?.match(
-    /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+))/i,
-  );
+  const content = metaRefresh?.match(/\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+))/i);
   const refreshUrl = (content?.[1] ?? content?.[2] ?? content?.[3])
     ?.replaceAll("&amp;", "&")
     .match(/url=(.+)$/i)?.[1];
@@ -87,7 +85,8 @@ export class AuthService {
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {},
   ): Promise<TextHttpResponse> {
-    const cookieJar = (this.session as IServSession & { cookieJar?: IServSession["cookieJar"] }).cookieJar;
+    const cookieJar = (this.session as IServSession & { cookieJar?: IServSession["cookieJar"] })
+      .cookieJar;
     if (!cookieJar) {
       const config = options.headers ? { headers: options.headers } : {};
       if (options.method === "POST") {
@@ -114,7 +113,11 @@ export class AuthService {
     const getSetCookie = (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
     const setCookies = getSetCookie?.call(res.headers) ?? [];
     const singleSetCookie = res.headers.get("set-cookie");
-    for (const cookie of setCookies.length > 0 ? setCookies : singleSetCookie ? [singleSetCookie] : []) {
+    for (const cookie of setCookies.length > 0
+      ? setCookies
+      : singleSetCookie
+        ? [singleSetCookie]
+        : []) {
       cookieJar.setCookieSync(cookie, url);
     }
 
@@ -166,14 +169,11 @@ export class AuthService {
       loginParams.set("_username", this.session.username);
       loginParams.set("_password", this.session.getPassword());
 
-      const loginRes = await this.fetchText(
-        baseRes.url,
-        {
-          method: "POST",
-          body: loginParams.toString(),
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        },
-      );
+      const loginRes = await this.fetchText(baseRes.url, {
+        method: "POST",
+        body: loginParams.toString(),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
       const postLoginRes = await this.followHtmlRedirects(loginRes);
 
       const body = postLoginRes.data as string;

@@ -10,34 +10,179 @@ function isAuthenticationUrl(url: string): boolean {
   return parsed.pathname === "/iserv/auth/login" || parsed.pathname === "/iserv/auth/auth";
 }
 
+function isLoginUrl(url: string): boolean {
+  return new URL(url).pathname === "/iserv/auth/login";
+}
+
+function isAppAuthUrl(url: string): boolean {
+  return new URL(url).pathname === "/iserv/auth/auth";
+}
+
+function resolveHtmlRedirect(html: string, baseUrl: string): string | null {
+  const metaRefresh = html.match(
+    /<meta\b[^>]*http-equiv\s*=\s*(?:"refresh"|'refresh'|refresh)[^>]*>/i,
+  )?.[0];
+  const content = metaRefresh?.match(
+    /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+))/i,
+  );
+  const refreshUrl = (content?.[1] ?? content?.[2] ?? content?.[3])
+    ?.replaceAll("&amp;", "&")
+    .match(/url=(.+)$/i)?.[1];
+  if (refreshUrl) return new URL(refreshUrl.replaceAll("&amp;", "&"), baseUrl).href;
+
+  const redirectLink = html.match(/<a\b[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  const href = redirectLink?.[1] ?? redirectLink?.[2];
+  if (!href || href.startsWith("#")) return null;
+
+  return new URL(href.replaceAll("&amp;", "&"), baseUrl).href;
+}
+
+type TextHttpResponse = {
+  data: string;
+  status: number;
+  headers: unknown;
+  url: string;
+};
+
+const NAVIGATION_HEADERS = {
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Upgrade-Insecure-Requests": "1",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+};
+
+function parseLoginForm(html: string): URLSearchParams {
+  const params = new URLSearchParams();
+  const inputPattern = /<input\b[^>]*>/gi;
+  const attrPattern = /([:\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+  for (const [input] of html.matchAll(inputPattern)) {
+    const attrs = new Map<string, string>();
+    for (const [, rawName, doubleQuoted, singleQuoted, bare] of input.matchAll(attrPattern)) {
+      if (!rawName) continue;
+      attrs.set(rawName.toLowerCase(), doubleQuoted ?? singleQuoted ?? bare ?? "");
+    }
+
+    const name = attrs.get("name");
+    if (!name) continue;
+
+    const type = attrs.get("type")?.toLowerCase();
+    if (type === "checkbox" || type === "radio") {
+      if (!attrs.has("checked")) continue;
+    }
+
+    params.set(name, attrs.get("value") ?? "");
+  }
+
+  return params;
+}
+
 export class AuthService {
   constructor(private readonly session: IServSession) {}
 
+  private async fetchText(
+    url: string,
+    options: { method?: string; body?: string; headers?: Record<string, string> } = {},
+  ): Promise<TextHttpResponse> {
+    const cookieJar = (this.session as IServSession & { cookieJar?: IServSession["cookieJar"] }).cookieJar;
+    if (!cookieJar) {
+      const config = options.headers ? { headers: options.headers } : {};
+      if (options.method === "POST") {
+        return this.session.http.post(url, options.body, config);
+      }
+      const res = await this.session.http.get(url, config);
+      return { ...res, data: res.data as string };
+    }
+
+    const cookieHeader = cookieJar.getCookieStringSync(url);
+    const headers = {
+      ...NAVIGATION_HEADERS,
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      ...options.headers,
+    };
+    const init: RequestInit = {
+      method: options.method ?? "GET",
+      headers,
+      redirect: "manual",
+    };
+    if (options.body !== undefined) init.body = options.body;
+    const res = await fetch(url, init);
+
+    const getSetCookie = (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+    const setCookies = getSetCookie?.call(res.headers) ?? [];
+    const singleSetCookie = res.headers.get("set-cookie");
+    for (const cookie of setCookies.length > 0 ? setCookies : singleSetCookie ? [singleSetCookie] : []) {
+      cookieJar.setCookieSync(cookie, url);
+    }
+
+    const location = res.headers.get("location");
+    if (location && res.status >= 300 && res.status < 400) {
+      return this.fetchText(new URL(location, url).href);
+    }
+
+    return {
+      data: await res.text(),
+      status: res.status,
+      headers: Object.fromEntries(res.headers.entries()),
+      url: res.url,
+    };
+  }
+
+  private async followHtmlRedirects(res: TextHttpResponse): Promise<TextHttpResponse> {
+    let current = res;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const redirectUrl = resolveHtmlRedirect(current.data as string, current.url);
+      if (!redirectUrl) return current;
+
+      const next = await this.session.http.get(redirectUrl);
+      current = { ...next, data: next.data as string };
+    }
+
+    return current;
+  }
+
+  private async establishAppSession(): Promise<void> {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const homeRes = await this.session.http.get(`${this.session.baseUrl()}/iserv/`);
+
+      if (!isAuthenticationUrl(homeRes.url)) return;
+      if (isLoginUrl(homeRes.url)) break;
+      if (isAppAuthUrl(homeRes.url)) continue;
+    }
+
+    throw new IServAuthError("Login failed! Session was not established.");
+  }
+
   async login(): Promise<void> {
-    const loginUrl = `${this.session.baseUrl()}/iserv/auth/login`;
+    const loginUrl = `${this.session.baseUrl()}/iserv/`;
 
     try {
-      const baseRes = await this.session.http.get(loginUrl);
+      const baseRes = await this.fetchText(loginUrl);
+      const loginParams = parseLoginForm(baseRes.data as string);
+      loginParams.set("_username", this.session.username);
+      loginParams.set("_password", this.session.getPassword());
 
-      const loginRes = await this.session.http.post(
+      const loginRes = await this.fetchText(
         baseRes.url,
-        new URLSearchParams({
-          _username: this.session.username,
-          _password: this.session.getPassword(),
-        }).toString(),
-        { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+        {
+          method: "POST",
+          body: loginParams.toString(),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        },
       );
+      const postLoginRes = await this.followHtmlRedirects(loginRes);
 
-      const body = loginRes.data as string;
+      const body = postLoginRes.data as string;
       if (body.includes("Account existiert nicht!"))
         throw new IServAuthError("Account does not exist!");
       if (body.includes("Anmeldung fehlgeschlagen!"))
         throw new IServAuthError("Login failed! Wrong password.");
 
-      const homeRes = await this.session.http.get(`${this.session.baseUrl()}/iserv/`);
-      if (isAuthenticationUrl(homeRes.url)) {
-        throw new IServAuthError("Login failed! Session was not established.");
-      }
+      await this.establishAppSession();
 
       await this.session.http.get(`${this.session.baseUrl()}/iserv/messenger/`);
 

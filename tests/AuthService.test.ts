@@ -57,7 +57,14 @@ describe("AuthService.login", () => {
       {
         get: [
           {
-            data: "<form></form>",
+            data: `
+              <form method="post">
+                <input type="hidden" name="_csrf_token" value="csrf-123">
+                <input type="hidden" name="_target_path" value="/iserv/">
+                <input type="text" name="_username" value="">
+                <input type="password" name="_password" value="">
+              </form>
+            `,
             status: 200,
             headers: {},
             url: "https://iserv.example/iserv/auth/login?_target_path=/iserv/",
@@ -88,7 +95,7 @@ describe("AuthService.login", () => {
     expect(calls[1]).toEqual({
       method: "post",
       url: "https://iserv.example/iserv/auth/login?_target_path=/iserv/",
-      body: "_username=alice&_password=secret",
+      body: "_csrf_token=csrf-123&_target_path=%2Fiserv%2F&_username=alice&_password=secret",
     });
   });
 
@@ -119,6 +126,100 @@ describe("AuthService.login", () => {
     });
 
     await expect(new AuthService(session).login()).rejects.toThrow("Session was not established");
+  });
+
+  test("follows the app auth handoff before requiring /iserv/ to be established", async () => {
+    const calls: HttpCall[] = [];
+    const session = createSession(
+      {
+        get: [
+          {
+            data: "<form></form>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/login",
+          },
+          {
+            data: "<main></main>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/auth?_iserv_app_url=%2Fiserv%2F&state=test",
+          },
+          { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
+          {
+            data: "<main>messenger app</main>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/",
+          },
+        ],
+        post: [
+          { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/auth/home" },
+          {
+            data: MESSENGER_AUTH_RESPONSE,
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/authenticate",
+          },
+        ],
+      },
+      calls,
+    );
+
+    await new AuthService(session).login();
+
+    expect(calls.filter((call) => call.method === "get" && call.url === "https://iserv.example/iserv/")).toHaveLength(3);
+  });
+
+  test("follows the post-login meta refresh callback before checking the app session", async () => {
+    const calls: HttpCall[] = [];
+    const session = createSession(
+      {
+        get: [
+          {
+            data: "<form></form>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/login?_target_path=/iserv/auth/auth",
+          },
+          {
+            data: "<main>redirect callback</main>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/",
+          },
+          { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/" },
+          {
+            data: "<main>messenger app</main>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/",
+          },
+        ],
+        post: [
+          {
+            data: '<meta http-equiv="refresh" content="0;url=https://iserv.example/iserv/app/authentication/redirect?state=test&amp;code=test">',
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/auth",
+          },
+          {
+            data: MESSENGER_AUTH_RESPONSE,
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/authenticate",
+          },
+        ],
+      },
+      calls,
+    );
+
+    await new AuthService(session).login();
+
+    expect(calls[2]).toEqual({
+      method: "get",
+      url: "https://iserv.example/iserv/app/authentication/redirect?state=test&code=test",
+    });
   });
 
   test("keeps the IServ error messages for invalid credentials", async () => {

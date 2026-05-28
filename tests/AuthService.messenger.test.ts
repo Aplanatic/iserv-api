@@ -25,7 +25,7 @@ describe("AuthService matrix token extraction", () => {
   const loginRoutes = [
     {
       method: "get" as const,
-      url: "https://iserv.example/iserv/auth/login",
+      url: "https://iserv.example/iserv/",
       response: {
         data: "<html><form action='/iserv/auth/login'></form></html>",
         url: "https://iserv.example/iserv/auth/login",

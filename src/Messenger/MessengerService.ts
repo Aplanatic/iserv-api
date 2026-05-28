@@ -241,6 +241,14 @@ export class MessengerService {
   }
 
   async createDirectMessage(matrixId: string): Promise<CreateDirectMessageResult> {
+    const ownUserId = this.session.matrixUserId;
+    if (ownUserId) {
+      const ownUuid = ownUserId.replace(/^@/, "").split(":")[0] ?? "";
+      if (matrixId.includes(ownUuid)) {
+        throw new IServApiError("Cannot create a direct message room with yourself", 400);
+      }
+    }
+
     const url = `${this.session.baseUrl()}/iserv/messenger/form/directmessage/create`;
     const origin = this.session.baseUrl();
 

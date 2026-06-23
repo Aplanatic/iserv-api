@@ -47,17 +47,17 @@
   "dependencies": {
     "cheerio": "^1.2.0",
     "dayjs": "^1.11.21",
-    "got": "^15.0.5",
-    "nodemailer": "^8.0.9",
+    "got": "^15.0.6",
+    "nodemailer": "^9.0.1",
     "tough-cookie": "^6.0.1",
     "webdav": "^5.10.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.15",
-    "@types/nodemailer": "^8.0.0",
+    "@biomejs/biome": "^2.5.1",
+    "@types/nodemailer": "^8.0.1",
     "@types/tough-cookie": "^4.0.5",
-    "tsdown": "^0.22.0",
+    "tsdown": "^0.22.3",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.9"
   }
 }

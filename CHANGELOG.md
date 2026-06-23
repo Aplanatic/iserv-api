@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.3 - 2026-06-24
+
+### Changed
+
+- Updated Dependencies to their latest version
+
+## 1.4.2 - 2026-05-27
+
+### Fixed
+- Fixed login failing with `Login failed! Session was not established`.
+- Updated authentication to support IServ's newer app login flow.
+- Added handling for IServ's post-login redirect through `/iserv/app/authentication/redirect`.
+
 ## 1.4.1 - 2026-05-14
 
 ### Added

@@ -176,7 +176,7 @@ describe("EmailService", () => {
       host: "iserv.example",
       port: 465,
       secure: true,
-      auth: { user: "test.user", pass: "secret" },
+      auth: { user: "test.user", pass: "test-password" },
       pool: true,
       maxConnections: 1,
       logger: false,

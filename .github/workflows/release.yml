@@ -51,10 +51,3 @@ jobs:
         run: npm publish --access restricted
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Grant consumer repositories read access
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh api --method PUT /orgs/Aplanatic/packages/npm/iserv-api/repositories/1305897765
-          gh api --method PUT /orgs/Aplanatic/packages/npm/iserv-api/repositories/1305897784

@@ -1,0 +1,14 @@
+name: Install private IServ API package
+description: Install the canonical versioned SDK artifact for private consumer CI
+runs:
+  using: composite
+  steps:
+    - name: Stage API package
+      shell: bash
+      run: |
+        mkdir -p .aplanatic-ci
+        cp "$GITHUB_ACTION_PATH/aplanatic-iserv-api-1.5.1.tgz" .aplanatic-ci/iserv-api.tgz
+        npm pkg set 'dependencies.@aplanatic/iserv-api=file:.aplanatic-ci/iserv-api.tgz'
+    - name: Install dependencies
+      shell: bash
+      run: npm install --package-lock=false

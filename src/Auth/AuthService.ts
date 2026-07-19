@@ -5,6 +5,14 @@ import { createLogger } from "../Core/Logger.js";
 
 const log = createLogger("Auth");
 
+export interface AuthChallenge {
+  kind: "otp";
+  field: string;
+  prompt: string;
+}
+
+export type AuthChallengeHandler = (challenge: AuthChallenge) => Promise<string>;
+
 function isAuthenticationUrl(url: string): boolean {
   const parsed = new URL(url);
   return parsed.pathname === "/iserv/auth/login" || parsed.pathname === "/iserv/auth/auth";
@@ -78,8 +86,32 @@ function parseLoginForm(html: string): URLSearchParams {
   return params;
 }
 
+function parseOtpChallenge(
+  html: string,
+  baseUrl: string,
+): { action: string; field: string; params: URLSearchParams } | null {
+  const form = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/i)?.[0];
+  if (!form) return null;
+  const fieldMatch = [
+    ...form.matchAll(/<input\b[^>]*\bname\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>/gi),
+  ]
+    .map((match) => match[1] ?? match[2] ?? match[3] ?? "")
+    .find((name) => /(?:otp|totp|2fa|auth.?code|verification.?code)/i.test(name));
+  if (!fieldMatch) return null;
+  const actionMatch = form.match(/\baction\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+  return {
+    action: new URL(actionMatch?.[1] ?? actionMatch?.[2] ?? actionMatch?.[3] ?? baseUrl, baseUrl)
+      .href,
+    field: fieldMatch,
+    params: parseLoginForm(form),
+  };
+}
+
 export class AuthService {
-  constructor(private readonly session: IServSession) {}
+  constructor(
+    private readonly session: IServSession,
+    private readonly challengeHandler?: AuthChallengeHandler,
+  ) {}
 
   private async fetchText(
     url: string,
@@ -160,6 +192,27 @@ export class AuthService {
     throw new IServAuthError("Login failed! Session was not established.");
   }
 
+  private async completeInteractiveChallenge(res: TextHttpResponse): Promise<TextHttpResponse> {
+    const challenge = parseOtpChallenge(res.data, res.url);
+    if (!challenge) return res;
+    if (!this.challengeHandler) {
+      throw new IServAuthError(
+        "Two-factor authentication is required; provide a challenge handler.",
+      );
+    }
+    const value = await this.challengeHandler({
+      kind: "otp",
+      field: challenge.field,
+      prompt: "Enter the one-time authentication code",
+    });
+    challenge.params.set(challenge.field, value.trim());
+    return this.fetchText(challenge.action, {
+      method: "POST",
+      body: challenge.params.toString(),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+  }
+
   async login(): Promise<void> {
     const loginUrl = `${this.session.baseUrl()}/iserv/`;
 
@@ -174,7 +227,8 @@ export class AuthService {
         body: loginParams.toString(),
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      const postLoginRes = await this.followHtmlRedirects(loginRes);
+      const challengedRes = await this.completeInteractiveChallenge(loginRes);
+      const postLoginRes = await this.followHtmlRedirects(challengedRes);
 
       const body = postLoginRes.data as string;
       if (body.includes("Account existiert nicht!"))

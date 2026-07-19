@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, isAbsolute, join, normalize, relative as relativePath, resolve } from "node:path";
 import type { IServAPI } from "../Core/IServClient.js";
 import { routeCatalog } from "../Routes/RouteCatalog.js";
 
@@ -83,7 +83,8 @@ export async function startExplorerServer(options: {
           ? "index.html"
           : normalize(requestUrl.pathname).replace(/^\/+/, "");
       const candidate = resolve(join(assetsRoot, relative));
-      if (!candidate.startsWith(`${assetsRoot}/`) && candidate !== assetsRoot) {
+      const relativeCandidate = relativePath(assetsRoot, candidate);
+      if (relativeCandidate.startsWith("..") || isAbsolute(relativeCandidate)) {
         return sendJson(response, 404, { error: "Not found" });
       }
       const file = (await stat(candidate).catch(() => null))?.isFile()

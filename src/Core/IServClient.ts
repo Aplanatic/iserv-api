@@ -6,8 +6,11 @@ import { EmailService } from "../Email/EmailService.js";
 import { FilesService } from "../Files/FilesService.js";
 import { MessengerService } from "../Messenger/MessengerService.js";
 import { NotificationService } from "../Notifications/NotificationService.js";
+import { routeCatalog } from "../Routes/RouteCatalog.js";
 import { UserService } from "../User/UserService.js";
+import { parseJson } from "./HttpClient.js";
 import { IServSession } from "./IServSession.js";
+import { redactValue } from "./Redaction.js";
 
 export interface StoredSession {
   hostname: string;
@@ -79,6 +82,51 @@ export class IServAPI {
     } catch {
       return false;
     }
+  }
+
+  async executeReadRoute(
+    routeId: string,
+    parameters: Record<string, string | number | boolean> = {},
+  ): Promise<{ routeId: string; status: number; durationMs: number; data: unknown }> {
+    const route = routeCatalog.get(routeId);
+    if (
+      route.method !== "GET" ||
+      route.sideEffect !== "read" ||
+      route.authentication !== "session"
+    ) {
+      throw new Error(`Route ${routeId} is not eligible for the read-only executor`);
+    }
+    let path = route.path;
+    const query: Record<string, string | number | boolean> = {};
+    for (const parameter of route.parameters) {
+      const value = parameters[parameter.name];
+      if (parameter.required && value === undefined) {
+        throw new Error(`Missing required parameter: ${parameter.name}`);
+      }
+      if (value === undefined) continue;
+      if (parameter.location === "path") {
+        path = path.replace(`{${parameter.name}}`, encodeURIComponent(String(value)));
+      } else if (parameter.location === "query") {
+        query[parameter.name] = value;
+      }
+    }
+    if (/\{[^}]+\}/.test(path)) throw new Error("Unresolved route path parameter");
+    const startedAt = performance.now();
+    const response = await this.session.http.get(`${this.session.baseUrl()}${path}`, {
+      params: query,
+    });
+    let data: unknown = response.data;
+    try {
+      data = parseJson(response.data, routeId);
+    } catch {
+      // HTML and text responses remain text and are still redacted.
+    }
+    return {
+      routeId,
+      status: response.status,
+      durationMs: Math.round(performance.now() - startedAt),
+      data: redactValue(data),
+    };
   }
 
   async disconnect(): Promise<void> {

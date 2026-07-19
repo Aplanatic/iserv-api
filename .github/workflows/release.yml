@@ -1,4 +1,4 @@
-name: Publish package
+name: Publish private package
 
 on:
   release:
@@ -25,7 +25,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
+          scope: '@aplanatic'
 
       - name: Install dependencies
         run: npm ci
@@ -40,8 +41,10 @@ jobs:
             exit 1
           fi
 
-      - name: Build package
-        run: npm run build
+      - name: Verify package
+        run: npm run check
 
       - name: Publish package
-        run: npm publish --access public --provenance
+        run: npm publish --access restricted
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

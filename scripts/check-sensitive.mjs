@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
+const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+  encoding: "utf8",
+})
   .split("\0")
   .filter(Boolean);
 const forbiddenFiles = /(^|\/)(\.env(?:\..+)?|[^/]+\.har)$/i;
@@ -14,7 +16,6 @@ const secretPatterns = [
 const allowedHosts = new Set([
   "iserv.example",
   "example.invalid",
-  "your-school.iserv.de",
   "github.com",
   "raw.githubusercontent.com",
   "registry.npmjs.org",
@@ -52,4 +53,4 @@ if (violations.length) {
   console.error(violations.join("\n"));
   process.exit(1);
 }
-console.log(`Sensitive-data check passed for ${files.length} tracked files.`);
+console.log(`Sensitive-data check passed for ${files.length} repository files.`);

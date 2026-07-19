@@ -19,7 +19,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "explorer/dist"
   ],
   "scripts": {
     "build": "tsdown",
@@ -33,7 +34,7 @@
     "explorer:build": "npm --prefix explorer run build",
     "check:sensitive": "node scripts/check-sensitive.mjs",
     "check": "npm run check:sensitive && npm run lint && npm run typecheck && npm test && npm run build && npm run explorer:build",
-    "prepare": "npm run build",
+    "prepare": "npm run build && npm install --prefix explorer --ignore-scripts && npm run explorer:build",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

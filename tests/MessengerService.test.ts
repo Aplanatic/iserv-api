@@ -973,7 +973,8 @@ describe("MessengerService.listenForMessages()", () => {
                       type: "m.room.message",
                       event_id: m.eventId,
                       sender: m.sender,
-                      origin_server_ts: Date.now(),
+                      // Always newer than the listener's start time, even on slower CI runners.
+                      origin_server_ts: Date.now() + 60_000,
                       content: { msgtype: "m.text", body: m.body },
                     })),
                   },

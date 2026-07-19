@@ -1,21 +1,19 @@
-import { CookieJar } from "tough-cookie";
+import { CookieJar, type SerializedCookieJar } from "tough-cookie";
 import { createHttpClient, type HttpClient } from "./HttpClient.js";
+import { normalizeInstanceUrl } from "./InstanceUrl.js";
 
 const passwords = new WeakMap<IServSession, string>();
 
 export class IServSession {
+  readonly url: string;
+  readonly username: string;
   readonly http: HttpClient;
   readonly cookieJar: CookieJar;
 
-  constructor(
-    readonly url: string,
-    readonly username: string,
-    password: string,
-  ) {
-    if (!/^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/.test(url)) {
-      throw new Error(`Invalid IServ URL: "${url}"`);
-    }
-    this.cookieJar = new CookieJar();
+  constructor(url: string, username: string, password: string, cookies?: SerializedCookieJar) {
+    this.url = normalizeInstanceUrl(url).hostname;
+    this.username = username;
+    this.cookieJar = cookies ? CookieJar.deserializeSync(cookies) : new CookieJar();
     this.http = createHttpClient(this.cookieJar);
     passwords.set(this, password);
   }
@@ -44,5 +42,11 @@ export class IServSession {
 
   clearSession(): void {
     this.cookieJar.removeAllCookiesSync();
+  }
+
+  serializeCookies(): SerializedCookieJar {
+    const serialized = this.cookieJar.serializeSync();
+    if (!serialized) throw new Error("Unable to serialize the IServ cookie jar");
+    return serialized;
   }
 }

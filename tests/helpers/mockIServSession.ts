@@ -102,7 +102,7 @@ export function createMockIServSession({
   routes,
   server = "iserv.example",
   username = "alice",
-  password = "secret",
+  password = "test-password",
 }: MockSessionOptions): {
   session: IServSession;
   calls: MockHttpCall[];

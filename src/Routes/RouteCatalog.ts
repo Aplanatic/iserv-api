@@ -1,0 +1,517 @@
+export type RouteMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "PROPFIND";
+export type RouteSideEffect = "read" | "write" | "communicative" | "destructive";
+export type RouteStatus = "supported" | "experimental" | "documented-only" | "deprecated";
+
+export interface RouteParameter {
+  name: string;
+  location: "path" | "query" | "body";
+  required: boolean;
+  description: string;
+}
+
+export interface RouteDefinition {
+  id: string;
+  module: string;
+  method: RouteMethod;
+  path: string;
+  summary: string;
+  description: string;
+  authentication: "session" | "basic" | "matrix-bearer" | "public";
+  capability?: string;
+  sideEffect: RouteSideEffect;
+  status: RouteStatus;
+  parameters: RouteParameter[];
+  pagination?: { limit?: string; cursor?: string; offset?: string };
+  provenance: { kind: "official-docs" | "upstream-sdk" | "matrix-spec"; reference: string };
+  lastVerified?: string;
+  compatibility?: string;
+}
+
+const p = (
+  name: string,
+  location: RouteParameter["location"],
+  required: boolean,
+  description: string,
+): RouteParameter => ({ name, location, required, description });
+const upstream = (reference: string) => ({ kind: "upstream-sdk" as const, reference });
+
+export const ROUTES = [
+  {
+    id: "auth.login",
+    module: "auth",
+    method: "POST",
+    path: "/iserv/auth/login",
+    summary: "Create a normal-user web session",
+    description:
+      "Submits the instance login form, including hidden fields and interactive challenges.",
+    authentication: "public",
+    sideEffect: "write",
+    status: "supported",
+    parameters: [
+      p("_username", "body", true, "Account name"),
+      p("_password", "body", true, "Account password"),
+    ],
+    provenance: upstream("src/Auth/AuthService.ts"),
+  },
+  {
+    id: "auth.logout",
+    module: "auth",
+    method: "GET",
+    path: "/iserv/auth/logout",
+    summary: "End the current session",
+    description: "Logs out the current web session and clears local session state.",
+    authentication: "session",
+    sideEffect: "destructive",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Auth/AuthService.ts"),
+  },
+  {
+    id: "account.get",
+    module: "account",
+    method: "GET",
+    path: "/iserv/account/my",
+    summary: "Read the signed-in account",
+    description: "Returns account metadata for the current user.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/User/UserService.ts"),
+  },
+  {
+    id: "profile.get",
+    module: "account",
+    method: "GET",
+    path: "/iserv/profile/public/edit",
+    summary: "Read editable profile data",
+    description: "Loads the current user's editable public profile form.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/User/UserService.ts"),
+  },
+  {
+    id: "profile.update",
+    module: "account",
+    method: "POST",
+    path: "/iserv/profile/public/edit",
+    summary: "Update the public profile",
+    description: "Submits fields supported by the user's profile form.",
+    authentication: "session",
+    sideEffect: "write",
+    status: "supported",
+    parameters: [p("fields", "body", true, "Validated profile fields")],
+    provenance: upstream("src/User/UserService.ts"),
+  },
+  {
+    id: "users.show",
+    module: "users",
+    method: "GET",
+    path: "/iserv/addressbook/public/show/{username}",
+    summary: "Read a visible user profile",
+    description: "Returns public address-book information visible to the signed-in account.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("username", "path", true, "IServ account name")],
+    provenance: upstream("src/User/UserService.ts"),
+  },
+  {
+    id: "users.search",
+    module: "users",
+    method: "GET",
+    path: "/iserv/addressbook/public",
+    summary: "Search the address book",
+    description: "Searches users visible to the current account.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("filter[search]", "query", true, "Search text")],
+    pagination: { limit: "limit", offset: "offset" },
+    provenance: upstream("src/User/UserService.ts"),
+  },
+  {
+    id: "users.autocomplete",
+    module: "users",
+    method: "GET",
+    path: "/iserv/core/autocomplete/api",
+    summary: "Autocomplete user or group names",
+    description: "Returns bounded autocomplete suggestions for supported modules.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [
+      p("query", "query", true, "Search prefix"),
+      p("limit", "query", false, "Maximum results"),
+    ],
+    pagination: { limit: "limit" },
+    provenance: upstream("src/User/UserService.ts"),
+  },
+  {
+    id: "notifications.list",
+    module: "notifications",
+    method: "GET",
+    path: "/iserv/user/api/notifications",
+    summary: "List notifications",
+    description: "Returns notification state visible to the current account.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("since", "query", false, "Notification cursor")],
+    pagination: { cursor: "since" },
+    provenance: upstream("src/Notifications/NotificationService.ts"),
+  },
+  {
+    id: "notifications.badges",
+    module: "notifications",
+    method: "GET",
+    path: "/iserv/app/navigation/badges",
+    summary: "Read navigation badges",
+    description: "Returns unread counters for installed modules.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Notifications/NotificationService.ts"),
+  },
+  {
+    id: "notifications.read_all",
+    module: "notifications",
+    method: "POST",
+    path: "/iserv/notification/api/v1/notifications/readall",
+    summary: "Mark all notifications read",
+    description: "Changes all currently visible notifications to read.",
+    authentication: "session",
+    sideEffect: "write",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Notifications/NotificationService.ts"),
+  },
+  {
+    id: "calendar.upcoming",
+    module: "calendar",
+    method: "GET",
+    path: "/iserv/calendar/api/upcoming",
+    summary: "List upcoming calendar events",
+    description: "Returns upcoming events from subscribed calendars.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("limit", "query", false, "Maximum events")],
+    pagination: { limit: "limit" },
+    provenance: upstream("src/Calendar/CalendarService.ts"),
+  },
+  {
+    id: "calendar.sources",
+    module: "calendar",
+    method: "GET",
+    path: "/iserv/calendar/api/eventsources",
+    summary: "List event sources",
+    description: "Lists calendars and event sources visible to the account.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Calendar/CalendarService.ts"),
+  },
+  {
+    id: "calendar.events",
+    module: "calendar",
+    method: "GET",
+    path: "/iserv/calendar/feed/calendar-multi",
+    summary: "Read events in a range",
+    description: "Returns calendar events for a requested time range.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("start", "query", true, "Range start"), p("end", "query", true, "Range end")],
+    provenance: upstream("src/Calendar/CalendarService.ts"),
+  },
+  {
+    id: "calendar.create",
+    module: "calendar",
+    method: "POST",
+    path: "/iserv/calendar/create",
+    summary: "Create an event",
+    description: "Creates an event in a writable calendar using its CSRF-protected form.",
+    authentication: "session",
+    capability: "calendar:write",
+    sideEffect: "communicative",
+    status: "supported",
+    parameters: [p("event", "body", true, "Validated event fields")],
+    provenance: upstream("src/Calendar/CalendarService.ts"),
+  },
+  {
+    id: "calendar.delete",
+    module: "calendar",
+    method: "POST",
+    path: "/iserv/calendar/delete",
+    summary: "Delete an event",
+    description: "Deletes an event if the account has permission.",
+    authentication: "session",
+    capability: "calendar:write",
+    sideEffect: "destructive",
+    status: "supported",
+    parameters: [p("id", "body", true, "Event identifier")],
+    provenance: upstream("src/Calendar/CalendarService.ts"),
+  },
+  {
+    id: "calendar.caldav",
+    module: "calendar",
+    method: "PROPFIND",
+    path: "/caldav/{calendar}",
+    summary: "Discover or synchronize calendars",
+    description: "Uses the official CalDAV interface with normal account credentials.",
+    authentication: "basic",
+    sideEffect: "read",
+    status: "documented-only",
+    parameters: [p("calendar", "path", true, "Calendar collection")],
+    provenance: { kind: "official-docs", reference: "https://doku.iserv.de/modules/calendar/" },
+  },
+  {
+    id: "files.webdav",
+    module: "files",
+    method: "PROPFIND",
+    path: "/webdav",
+    summary: "Browse files over WebDAV",
+    description: "Uses the official WebDAV interface with normal account credentials.",
+    authentication: "basic",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("path", "query", false, "Remote path")],
+    provenance: {
+      kind: "official-docs",
+      reference: "https://doku.iserv.de/cookbook/external/webdav/",
+    },
+  },
+  {
+    id: "files.size",
+    module: "files",
+    method: "GET",
+    path: "/iserv/file/calc",
+    summary: "Calculate folder size",
+    description: "Returns the calculated size of an accessible file path.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("path", "query", true, "Accessible file path")],
+    provenance: upstream("src/Files/FilesService.ts"),
+  },
+  {
+    id: "files.quota",
+    module: "files",
+    method: "GET",
+    path: "/iserv/du/account",
+    summary: "Read account disk usage",
+    description: "Returns storage usage and quota data.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Files/FilesService.ts"),
+  },
+  {
+    id: "mail.list",
+    module: "mail",
+    method: "GET",
+    path: "/iserv/mail/api/v2/account/{accountId}/message",
+    summary: "List email messages",
+    description: "Returns bounded message metadata for a mailbox.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [
+      p("accountId", "path", true, "Mail account identifier"),
+      p("limit", "query", false, "Maximum messages"),
+    ],
+    pagination: { limit: "limit", offset: "offset" },
+    provenance: upstream("src/Email/EmailService.ts"),
+  },
+  {
+    id: "mail.message",
+    module: "mail",
+    method: "GET",
+    path: "/iserv/mail/api/v2/account/{accountId}/mailbox/{mailboxId}/message/{uid}",
+    summary: "Read an email message",
+    description: "Returns one message visible to the current account.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [
+      p("accountId", "path", true, "Mail account"),
+      p("mailboxId", "path", true, "Mailbox"),
+      p("uid", "path", true, "Message UID"),
+    ],
+    provenance: upstream("src/Email/EmailService.ts"),
+  },
+  {
+    id: "mail.flags",
+    module: "mail",
+    method: "PATCH",
+    path: "/iserv/mail/api/v2/account/{accountId}/mailbox/{mailboxId}/message/{uid}",
+    summary: "Change email flags",
+    description: "Marks an email read or unread.",
+    authentication: "session",
+    sideEffect: "write",
+    status: "supported",
+    parameters: [p("flags", "body", true, "Message flags")],
+    provenance: upstream("src/Email/EmailService.ts"),
+  },
+  {
+    id: "mail.send",
+    module: "mail",
+    method: "POST",
+    path: "smtp://{instance}:465",
+    summary: "Send email via SMTP",
+    description: "Sends email using the account's official mail service and credentials.",
+    authentication: "basic",
+    sideEffect: "communicative",
+    status: "supported",
+    parameters: [p("message", "body", true, "Recipients, subject, body, and attachments")],
+    provenance: upstream("src/Email/EmailService.ts"),
+  },
+  {
+    id: "messenger.authenticate",
+    module: "messenger",
+    method: "POST",
+    path: "/iserv/messenger/authenticate",
+    summary: "Create a scoped Matrix session",
+    description:
+      "Exchanges the current IServ web session for a Matrix access token kept in memory.",
+    authentication: "session",
+    sideEffect: "write",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Auth/AuthService.ts"),
+  },
+  {
+    id: "messenger.sync",
+    module: "messenger",
+    method: "GET",
+    path: "/_matrix/client/v3/sync",
+    summary: "Synchronize rooms",
+    description: "Returns joined rooms and incremental Matrix state.",
+    authentication: "matrix-bearer",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [
+      p("since", "query", false, "Sync token"),
+      p("timeout", "query", false, "Long-poll timeout"),
+    ],
+    pagination: { cursor: "since" },
+    provenance: { kind: "matrix-spec", reference: "Matrix Client-Server API v3" },
+  },
+  {
+    id: "messenger.messages",
+    module: "messenger",
+    method: "GET",
+    path: "/_matrix/client/v3/rooms/{roomId}/messages",
+    summary: "List room messages",
+    description: "Returns a bounded page of messages from a joined room.",
+    authentication: "matrix-bearer",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [
+      p("roomId", "path", true, "Matrix room ID"),
+      p("limit", "query", false, "Maximum events"),
+    ],
+    pagination: { limit: "limit", cursor: "from" },
+    provenance: upstream("src/Messenger/MessengerService.ts"),
+  },
+  {
+    id: "messenger.send",
+    module: "messenger",
+    method: "PUT",
+    path: "/_matrix/client/v3/rooms/{roomId}/send/m.room.message/{txnId}",
+    summary: "Send a room message",
+    description: "Immediately sends a message to a joined room.",
+    authentication: "matrix-bearer",
+    sideEffect: "communicative",
+    status: "supported",
+    parameters: [
+      p("roomId", "path", true, "Room ID"),
+      p("txnId", "path", true, "Unique transaction ID"),
+      p("message", "body", true, "Message body"),
+    ],
+    provenance: upstream("src/Messenger/MessengerService.ts"),
+  },
+  {
+    id: "messenger.leave",
+    module: "messenger",
+    method: "POST",
+    path: "/_matrix/client/v3/rooms/{roomId}/leave",
+    summary: "Leave a room",
+    description: "Immediately leaves a joined Matrix room.",
+    authentication: "matrix-bearer",
+    sideEffect: "destructive",
+    status: "supported",
+    parameters: [p("roomId", "path", true, "Room ID")],
+    provenance: upstream("src/Messenger/MessengerService.ts"),
+  },
+  {
+    id: "messenger.redact",
+    module: "messenger",
+    method: "PUT",
+    path: "/_matrix/client/v3/rooms/{roomId}/redact/{eventId}/{txnId}",
+    summary: "Delete a message or reaction",
+    description: "Redacts an event when the account has permission.",
+    authentication: "matrix-bearer",
+    sideEffect: "destructive",
+    status: "supported",
+    parameters: [p("roomId", "path", true, "Room ID"), p("eventId", "path", true, "Event ID")],
+    provenance: upstream("src/Messenger/MessengerService.ts"),
+  },
+  {
+    id: "conference.health",
+    module: "conference",
+    method: "GET",
+    path: "/iserv/videoconference/api/health",
+    summary: "Read conference service health",
+    description: "Returns health/capacity information exposed to the account.",
+    authentication: "session",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [],
+    provenance: upstream("src/Conference/ConferenceService.ts"),
+  },
+] satisfies RouteDefinition[];
+
+export class RouteCatalog {
+  readonly routes: readonly RouteDefinition[];
+  constructor(routes: readonly RouteDefinition[] = ROUTES) {
+    const ids = new Set<string>();
+    for (const route of routes) {
+      if (ids.has(route.id)) throw new Error(`Duplicate route id: ${route.id}`);
+      ids.add(route.id);
+    }
+    this.routes = routes;
+  }
+  get(id: string): RouteDefinition {
+    const route = this.routes.find((candidate) => candidate.id === id);
+    if (!route) throw new Error(`Unknown route id: ${id}`);
+    return route;
+  }
+  search(query: string): RouteDefinition[] {
+    const needle = query.trim().toLowerCase();
+    return this.routes.filter((route) =>
+      [route.id, route.module, route.path, route.summary, route.description].some((value) =>
+        value.toLowerCase().includes(needle),
+      ),
+    );
+  }
+  modules(): string[] {
+    return [...new Set(this.routes.map((route) => route.module))].sort();
+  }
+  tree(): Record<string, RouteDefinition[]> {
+    return Object.fromEntries(
+      this.modules().map((module) => [
+        module,
+        this.routes.filter((route) => route.module === module),
+      ]),
+    );
+  }
+}
+
+export const routeCatalog = new RouteCatalog();

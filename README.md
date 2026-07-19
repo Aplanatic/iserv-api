@@ -1,25 +1,32 @@
-# iserv-api
+# Aplanatic IServ API
 
-Unofficial TypeScript SDK for IServ school management servers. Authenticate with username and password, no API key required.
+Private, unofficial TypeScript SDK, canonical normal-user route catalog, native-keychain
+profile authentication, and local route explorer for IServ school management servers.
+It does not bypass permissions or require an administrator-created OAuth client.
 
 ## Installation
 
 ```bash
-npm install iserv-api
+npm install @aplanatic/iserv-api --registry=https://npm.pkg.github.com
 ```
 
 ## Basic usage
 
 ```ts
-import { IServAPI } from "iserv-api";
+import { IServClient } from "@aplanatic/iserv-api";
 
-const api = await IServAPI.connect("your-school.iserv.de", "username", "password");
+const api = await IServClient.connect("iserv.example", "username", "password");
 
 const info = await api.users.getOwnInfo();
 console.log(info);
 
 await api.disconnect();
 ```
+
+For reusable sessions, use `AuthBroker`; secrets and cookies are stored only in the
+operating system credential store. `routeCatalog` exposes typed route metadata and
+`npm run explorer:dev` starts the three-pane documentation explorer. Its live proxy
+is loopback-only, launch-token protected, redacted, and limited to catalogued GET routes.
 
 ## Table of contents
 

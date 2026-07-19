@@ -26,6 +26,7 @@ export {
 } from "./Core/IServClient.js";
 export { redactText, redactValue } from "./Core/Redaction.js";
 export type { PatchMessageResult } from "./Email/EmailTypes.js";
+export { startExplorerServer } from "./Explorer/ExplorerServer.js";
 export { MessengerService } from "./Messenger/MessengerService.js";
 export type {
   CreateDirectMessageResult,

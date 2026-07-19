@@ -1,6 +1,6 @@
 const SECRET_KEY = /authorization|cookie|password|passwd|secret|token|session/i;
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
-const HOST = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi;
+const HOST = /\b(?:[a-z0-9-]+\.)+(?:de|com|org|net|edu|eu|app|dev|school|cloud|info)\b/gi;
 
 export function redactText(value: string): string {
   return value.replace(EMAIL, "[redacted-email]").replace(HOST, (host) => {

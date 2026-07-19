@@ -8,6 +8,12 @@ describe("redaction", () => {
     );
   });
 
+  test("does not redact route IDs or TypeScript filenames", () => {
+    expect(redactText("account.get src/User/UserService.ts")).toBe(
+      "account.get src/User/UserService.ts",
+    );
+  });
+
   test("redacts secret-shaped object fields and bounds arrays", () => {
     const result = redactValue({ password: "test-password", nested: { token: "abc" }, items: Array.from({ length: 110 }, (_, index) => index) });
     expect(result).toMatchObject({ password: "[redacted]", nested: { token: "[redacted]" } });

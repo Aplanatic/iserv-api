@@ -6,7 +6,7 @@ runs:
     - name: Stage API package
       shell: bash
       run: |
-        node -e "const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('.aplanatic-ci',{recursive:true});fs.copyFileSync(path.join(process.env.GITHUB_ACTION_PATH,'aplanatic-iserv-api-1.5.1.tgz'),path.join('.aplanatic-ci','iserv-api.tgz'))"
+        node -e "const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('.aplanatic-ci',{recursive:true});fs.copyFileSync(path.join(process.env.GITHUB_ACTION_PATH,'aplanatic-iserv-api-1.6.0.tgz'),path.join('.aplanatic-ci','iserv-api.tgz'))"
         npm pkg set 'dependencies.@aplanatic/iserv-api=file:.aplanatic-ci/iserv-api.tgz'
     - name: Install dependencies
       shell: bash

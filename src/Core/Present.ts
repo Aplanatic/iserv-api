@@ -118,6 +118,21 @@ function presentContacts(value: unknown[]): unknown {
   };
 }
 
+function coercePreviewText(value: Record<string, unknown>): string {
+  if (typeof value.body === "string") return value.body;
+  if (typeof value.formatted_body === "string") return value.formatted_body;
+  return "";
+}
+
+function lastMessagePreview(last: Record<string, unknown> | null): string {
+  if (!last) return "—";
+  const bodyRaw = last.body;
+  const previewText =
+    typeof bodyRaw === "string" ? bodyRaw : isRecord(bodyRaw) ? coercePreviewText(bodyRaw) : "";
+  const fromTop = previewText || coercePreviewText(last);
+  return fromTop ? cleanText(fromTop).slice(0, 60) : "—";
+}
+
 function presentRooms(value: unknown[]): unknown {
   if (value.length === 0) {
     return { title: "Rooms", empty: true, message: "No joined rooms.", items: [] };
@@ -127,10 +142,6 @@ function presentRooms(value: unknown[]): unknown {
     items: value.map((room) => {
       if (!isRecord(room)) return { value: String(room) };
       const last = isRecord(room.lastMessage) ? room.lastMessage : null;
-      const bodyRaw = last?.body;
-      const previewText =
-        typeof bodyRaw === "string" ? bodyRaw : isRecord(bodyRaw) ? coercePreviewText(bodyRaw) : "";
-      const preview = previewText ? cleanText(previewText).slice(0, 60) : "—";
       const when =
         last && typeof last.timestamp === "number"
           ? shortDate(new Date(last.timestamp).toISOString())
@@ -139,21 +150,24 @@ function presentRooms(value: unknown[]): unknown {
         name: cleanText(String(room.name ?? room.id ?? "—")),
         unread: String(room.unreadCount ?? 0),
         direct: room.isDirect ? "yes" : "no",
-        last: preview,
+        last: lastMessagePreview(last),
         when,
       };
     }),
   };
 }
 
-function coercePreviewText(value: Record<string, unknown>): string {
-  if (typeof value.body === "string") return value.body;
-  if (typeof value.formatted_body === "string") return value.formatted_body;
-  return "";
-}
-
+/** Room-shaped rows from messenger.getRooms / sync envelopes. */
 function isMessengerRoomItem(value: unknown): boolean {
-  return isRecord(value) && "unreadCount" in value && "isDirect" in value;
+  if (!isRecord(value)) return false;
+  if ("lastMessage" in value) {
+    return (
+      "unreadCount" in value ||
+      "isDirect" in value ||
+      (typeof value.id === "string" && value.id.startsWith("!"))
+    );
+  }
+  return "unreadCount" in value && "isDirect" in value;
 }
 
 function presentNotifications(value: Record<string, unknown>): unknown {
@@ -309,7 +323,15 @@ function presentModuleRows(items: unknown[]): unknown[] {
     for (const [key, entry] of Object.entries(item)) {
       if (key === "href" || key === "Href") continue;
       if (entry === null || entry === undefined) continue;
-      let text = cleanText(String(entry));
+      let text: string;
+      if (key === "lastMessage" && isRecord(entry)) {
+        text = lastMessagePreview(entry);
+      } else if (isRecord(entry) || Array.isArray(entry)) {
+        // Never String(object) → "[object Object]" in tables
+        continue;
+      } else {
+        text = cleanText(String(entry));
+      }
       if (key.toLowerCase().includes("deadline") || key.toLowerCase().includes("date")) {
         // Prefer first datetime if concatenated
         const m = text.match(/^(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i);

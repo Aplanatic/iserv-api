@@ -97,12 +97,12 @@ used.
 
 ## Coverage status
 
-The current catalog contains 69 routes in 25 modules: 63 supported, five experimental,
-and one documented-only CalDAV route. Forty-seven of 48 supported reads have a current
-live verification marker. Opening an individual mail message is the sole supported read
-not exercised against the real account because some installations may change its read
-state. Mutation routes are catalogued and tested with mocks, not executed on the real
-account. The local live suite currently runs 25 safe checks.
+The current catalog contains 71 routes in 25 modules: 65 supported, five experimental,
+and one documented-only CalDAV route. Forty-eight of 50 supported reads have a current
+live verification marker. Opening an individual mail message is not live-verified because
+some installations may change its read state; `auth.logout` is likewise omitted from the
+safe live suite. Mutation routes are catalogued and tested with mocks, not executed on the
+real account. The local live suite currently runs 25 safe checks.
 
 ## Security and privacy
 
@@ -330,7 +330,8 @@ await api.email.sendEmail({
 });
 ```
 
-Attachments must be relative paths. `smtpsPort` must be `465` or `587`.
+Attachment paths may be relative, absolute, or `~/…` (home expanded). Path traversal
+(`..`) is rejected. `smtpsPort` must be `465` or `587`.
 
 #### Mark as unread
 
@@ -402,7 +403,7 @@ const result = await api.calendar.createEvent({
   description: "Bring calculator",
   alarms: ["1D", "2H"],
   isAllDayLong: false,
-  participants: ["bob", "carol@school.iserv.de"],
+  participants: ["bob", "carol@iserv.example"],
   showMeAs: "OPAQUE",
   privacy: "PUBLIC",
   recurring: {
@@ -450,7 +451,7 @@ Custom interval alarm:
 
 ```ts
 await api.calendar.deleteEvent({
-  uid: "abc123@school.iserv.de",
+  uid: "abc123@iserv.example",
   hash: "541f2d74099d785d1286c03903a2e826",
   calendar: "/alice/home",
   start: "2025-09-27T14:00:00+02:00",
@@ -477,6 +478,15 @@ const files = await client.getDirectoryContents("/");
 await client.putFileContents("/notes.txt", "hello");
 const data = await client.getFileContents("/notes.txt");
 ```
+
+#### List a WebDAV directory
+
+```ts
+const entries = await api.files.listWebDav("/");
+```
+
+Convenience wrapper around `getClient().getDirectoryContents`. Requires WebDAV access and a
+stored password on the session (not available for many student accounts).
 
 #### Get folder size
 

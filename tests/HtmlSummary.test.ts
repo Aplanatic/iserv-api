@@ -2,67 +2,52 @@ import { describe, expect, test } from "vitest";
 import { isHtmlResponse, summarizeHtml } from "../src/Core/HtmlSummary.js";
 
 describe("HTML extracted data", () => {
-  test("extracts tables, headings, and metadata from IServ-like page", () => {
+  test("extracts content tables and ignores navigation chrome", () => {
     const html = `<!doctype html><html><head><title>My Account - IServ</title></head><body>
-      <h1>My Account</h1>
-      <table>
-        <caption>Personal Info</caption>
-        <thead><tr><th>Field</th><th>Value</th></tr></thead>
-        <tbody>
-          <tr><td>Name</td><td>Alice Example</td></tr>
-          <tr><td>Class</td><td>12A</td></tr>
-        </tbody>
-      </table>
-      <form method="post" action="/iserv/profile/edit">
-        <input type="hidden" name="_token" value="abc123">
-        <input name="email" type="text">
-      </form>
-      <a href="/iserv/calendar">Calendar</a>
-      <ul class="list-group">
-        <li>Item one</li>
-        <li>Item two</li>
-      </ul>
+      <nav><a href="/iserv/">Home</a><a href="/iserv/mail">Mail</a></nav>
+      <div id="content">
+        <h1>My Account</h1>
+        <table>
+          <caption>Personal Info</caption>
+          <thead><tr><th>Field</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Name</td><td>Alice Example</td></tr>
+            <tr><td>Class</td><td>12A</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <footer><a href="/legal">Legal</a></footer>
     </body></html>`;
 
     const extracted = summarizeHtml(html);
     expect(extracted.kind).toBe("html-extracted");
-    expect(extracted.title).toBe("My Account - IServ");
-    expect(extracted.tables.length).toBeGreaterThanOrEqual(1);
-    const table = extracted.tables[0];
-    expect(table).toBeDefined();
-    expect(table!.headers).toContain("Field");
-    expect(table!.rows.length).toBe(2);
-    expect(table!.rows[0]).toMatchObject({ Field: "Name", Value: "Alice Example" });
-    expect(extracted.forms.length).toBeGreaterThanOrEqual(1);
-    expect(extracted.forms[0]?.method).toBe("POST");
-    expect(extracted.forms[0]?.fields).toContain("email");
-    expect(extracted.metadata._csrf_present).toBe("yes");
+    expect(extracted.title).toBe("My Account");
+    expect(extracted.tables.length).toBe(1);
+    expect(extracted.tables[0]!.rows).toHaveLength(2);
+    expect(extracted.tables[0]!.rows[0]).toMatchObject({
+      Field: "Name",
+      Value: "Alice Example",
+    });
+    // Nav links must not appear as content items
+    expect(JSON.stringify(extracted)).not.toMatch(/\/iserv\/mail/);
   });
 
-  test("extracts key-value patterns from DL and from kv tables", () => {
+  test("extracts news items from content region", () => {
     const html = `<!doctype html><html><body>
-      <h2>User Info</h2>
-      <dl>
-        <dt>Name</dt>
-        <dd>Devin</dd>
-        <dt>Email</dt>
-        <dd>devin@iserv.example</dd>
-      </dl>
-      <table>
-        <tbody>
-          <tr><th>Status:</th><td>Active</td></tr>
-          <tr><th>Role:</th><td>Student</td></tr>
-        </tbody>
-      </table>
+      <div id="content">
+        <div class="panel"><div class="panel-heading">All news</div>
+        <div class="panel-body">
+          <div class="row news">
+            <h3 class="news-title"><a href="/iserv/news/show/1">Holiday greetings</a></h3>
+            <p class="text-muted">1/1/2026 | Admin | News</p>
+            <p>Have a nice break.</p>
+          </div>
+        </div></div>
+      </div>
     </body></html>`;
-
     const extracted = summarizeHtml(html);
-    expect(extracted.keyValues).toMatchObject({
-      Name: "Devin",
-      Email: expect.stringContaining("devin"),
-      Status: "Active",
-      Role: "Student",
-    });
+    expect(extracted.items.length).toBeGreaterThanOrEqual(1);
+    expect(extracted.items[0]?.title).toBe("Holiday greetings");
   });
 
   test("detects HTML from content type or markup", () => {

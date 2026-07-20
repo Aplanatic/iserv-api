@@ -1,5 +1,6 @@
 import { load } from "cheerio";
-import type { Element, Text } from "domhandler";
+import type { CheerioAPI, Element } from "cheerio";
+import type { AnyNode, Text } from "domhandler";
 
 export interface HtmlExtractedData {
   kind: "html-extracted";
@@ -8,9 +9,8 @@ export interface HtmlExtractedData {
   keyValues: Record<string, string>;
   lists: HtmlList[];
   sections: HtmlSection[];
-  links: HtmlLink[];
-  metadata: Record<string, string>;
-  forms: HtmlForm[];
+  items: HtmlItem[];
+  emptyMessage?: string;
   bytes: number;
 }
 
@@ -31,29 +31,54 @@ export interface HtmlSection {
   content: string[];
 }
 
-export interface HtmlLink {
-  text: string;
-  href: string;
+export interface HtmlItem {
+  title: string;
+  subtitle?: string;
+  body?: string;
+  href?: string;
+  meta?: Record<string, string>;
 }
 
-export interface HtmlForm {
-  action: string;
-  method: string;
-  fields: string[];
-}
+const CHROME_SELECTORS = [
+  "script",
+  "style",
+  "noscript",
+  "svg",
+  "path",
+  "defs",
+  "use",
+  "nav",
+  "header",
+  "footer",
+  "aside",
+  ".navbar",
+  ".sidebar",
+  ".iserv-menu",
+  ".menu-sidebar",
+  ".breadcrumb",
+  "#sidebar",
+  ".skip-link",
+  "[hidden]",
+  ".hidden",
+  ".d-none",
+  "[aria-hidden='true']",
+  ".sr-only",
+  ".fileupload",
+  ".dropzone",
+  ".modal",
+].join(", ");
 
-function collectText(node: Element | undefined, $: cheerio.CheerioAPI): string {
+function collectText(node: Element | undefined): string {
   if (!node) return "";
   let text = "";
-  for (const child of node.childNodes) {
+  for (const child of node.childNodes as AnyNode[]) {
     if (child.type === "text") {
       text += (child as Text).data;
-    } else if (child.type === "tag" || child.type === "script") {
+    } else if (child.type === "tag") {
       const el = child as Element;
-      if (el.tagName === "br") {
-        text += " ";
-      } else if (!["script", "style"].includes(el.tagName)) {
-        text += collectText(el, $);
+      if (el.tagName === "br") text += " ";
+      else if (!["script", "style", "svg"].includes(el.tagName)) {
+        text += collectText(el);
       }
     }
   }
@@ -64,28 +89,50 @@ function cleanText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function textOf($: CheerioAPI, el: Element | undefined): string {
+  return cleanText(collectText(el));
+}
+
 /**
- * Extracts structured data from an HTML page using Cheerio.
- * Produces tables, key-value pairs, lists, sections, links, forms, and metadata
- * that CLI and MCP consumers can render meaningfully.
+ * Extracts structured content from an authenticated HTML page.
+ * Scopes to the main content region and ignores navigation chrome.
  */
 export function summarizeHtml(value: string): HtmlExtractedData {
   const $ = load(value);
-
-  // Remove non-content elements that carry no user-visible meaning
-  $("script, style, noscript, svg, path, defs, use").remove();
-  $("[hidden], .hidden, .d-none, [aria-hidden='true']").remove();
-
-  const title = $("title").first().text().trim() || undefined;
+  const pageTitle = $("title").first().text().replace(/\s+/g, " ").trim() || undefined;
   const bytes = Buffer.byteLength(value);
 
-  const tables = extractTables($);
-  const keyValues = extractKeyValues($);
-  const lists = extractLists($);
-  const sections = extractSections($);
-  const links = extractLinks($);
-  const forms = extractForms($);
-  const metadata = extractMetadata($);
+  // Prefer the real content region; fall back to main/body.
+  let $root = $("#content").first();
+  if (!$root.length) $root = $("main .page-content, main .content, main").first();
+  if (!$root.length) $root = $("body");
+
+  // Work on a clone so we can strip chrome without losing page title.
+  const rootHtml = $.html($root);
+  const $c = load(`<div id="__root">${rootHtml}</div>`);
+  $c(CHROME_SELECTORS).remove();
+  // Drop pure navigation panels that often sit beside content
+  $c(".panel-heading").each((_i, el) => {
+    const heading = textOf($c, el as Element).toLowerCase();
+    if (
+      ["search", "latest", "categories", "news subscriptions", "quick access"].includes(
+        heading,
+      )
+    ) {
+      $c(el).closest(".panel, .card").remove();
+    }
+  });
+
+  const tables = extractTables($c);
+  const keyValues = extractKeyValues($c);
+  const lists = extractLists($c);
+  const sections = extractSections($c);
+  const items = extractItems($c);
+  const emptyMessage = extractEmptyMessage($c);
+
+  // Prefer module-ish title from h1 inside content
+  const h1 = textOf($c, $c("h1").first().get(0) as Element | undefined);
+  const title = h1 || pageTitle;
 
   return {
     kind: "html-extracted",
@@ -94,367 +141,301 @@ export function summarizeHtml(value: string): HtmlExtractedData {
     keyValues,
     lists,
     sections,
-    links,
-    forms,
-    metadata,
+    items,
+    ...(emptyMessage ? { emptyMessage } : {}),
     bytes,
   };
 }
 
-function extractTables($: cheerio.CheerioAPI): HtmlTable[] {
+function extractEmptyMessage($: CheerioAPI): string | undefined {
+  const candidates = [
+    ".alert-info",
+    ".alert-warning",
+    ".empty",
+    ".no-results",
+    ".text-muted",
+    "p",
+  ];
+  for (const sel of candidates) {
+    const el = $(sel).filter((_i, node) => {
+      const t = textOf($, node as Element).toLowerCase();
+      return (
+        t.includes("no ") ||
+        t.includes("currently no") ||
+        t.includes("there are no") ||
+        t.includes("there're no") ||
+        t.includes("nichts") ||
+        t.includes("keine ")
+      );
+    }).first();
+    if (el.length) {
+      const msg = textOf($, el.get(0) as Element);
+      if (msg.length > 8 && msg.length < 240) return msg;
+    }
+  }
+  return undefined;
+}
+
+function extractTables($: CheerioAPI): HtmlTable[] {
   const result: HtmlTable[] = [];
   $("table").each((_i, tableEl) => {
     const $table = $(tableEl);
-    const caption = $table.find("caption").first().text().trim() || undefined;
+    // Skip upload/file-picker helper tables
+    const cls = ($table.attr("class") ?? "").toLowerCase();
+    if (cls.includes("fileupload") || cls.includes("dz-")) return;
+    if ($table.closest(".fileupload, .dropzone, .modal").length) return;
 
-    // Collect headers from thead th/th in first tr
+    const caption = $table.find("caption").first().text().trim() || undefined;
     const headers: string[] = [];
-    $table.find("thead tr, > tr:first-child").first().find("th, td").each((_j, cell) => {
-      const text = cleanText(collectText(cell as Element, $));
-      if (text) headers.push(text);
+    $table.find("thead tr").first().find("th, td").each((_j, cell) => {
+      const text = textOf($, cell as Element);
+      // Skip empty action columns
+      headers.push(text || "");
     });
 
-    // If no thead, try first tr as header heuristic (if all th)
+    // Drop leading/trailing empty header columns (checkbox/action cols)
+    while (headers.length && !headers[0]) headers.shift();
+    while (headers.length && !headers[headers.length - 1]) headers.pop();
+
     if (headers.length === 0) {
-      $table.find("> tbody > tr:first-child, > tr").first().find("th").each((_j, cell) => {
-        headers.push(cleanText(collectText(cell as Element, $)));
+      $table.find("tbody tr, tr").first().find("th").each((_j, cell) => {
+        headers.push(textOf($, cell as Element));
       });
     }
 
-    // Build header labels or fallback to Col 1, Col 2, ...
-    const colCount = (() => {
-      if (headers.length > 0) return headers.length;
-      const firstBodyRow = $table.find("tbody tr, > tr").first();
-      if (!firstBodyRow.length) return 0;
-      return firstBodyRow.get(0)!.childNodes.filter(
-        (n): n is Element => n.type === "tag" && n.tagName === "td",
-      ).length;
-    })();
+    const finalHeaders =
+      headers.filter(Boolean).length > 0
+        ? headers.map((h, i) => h || `Col ${i + 1}`)
+        : [];
 
-    const finalHeaders: string[] =
-      headers.length > 0
-        ? headers
-        : colCount > 0
-          ? Array.from({ length: colCount }, (_, i) => `Col ${i + 1}`)
-          : [];
-
-    // Parse body rows
     const rows: Record<string, string>[] = [];
     $table.find("tbody tr").each((_j, row) => {
-      const cells: string[] = [];
-      $(row).find("td, th").each((_k, cell) => {
-        cells.push(cleanText(collectText(cell as Element, $)));
-      });
-
+      const $row = $(row);
+      // Skip group header rows (single cell spanning)
+      const cells = $row.find("td");
       if (cells.length === 0) return;
-      const rowData: Record<string, string> = {};
-      for (let k = 0; k < cells.length; k++) {
-        const header = finalHeaders[k] ?? `Col ${k + 1}`;
-        rowData[header] = cells[k]!;
+      if (cells.length === 1 && $row.find("th").length === 0) {
+        const only = textOf($, cells.get(0) as Element);
+        if (only && finalHeaders.length === 0) {
+          // section label row — skip as data
+          return;
+        }
       }
-      rows.push(rowData);
+
+      const values: string[] = [];
+      $row.find("td, th").each((_k, cell) => {
+        values.push(textOf($, cell as Element));
+      });
+      // strip empty leading/trailing action cells to align with headers
+      while (values.length && !values[0] && values.length > finalHeaders.length) {
+        values.shift();
+      }
+      while (
+        values.length &&
+        !values[values.length - 1] &&
+        values.length > finalHeaders.length
+      ) {
+        values.pop();
+      }
+
+      // Skip empty or pure-action rows
+      if (values.every((v) => !v || /^(delete|hide|edit|show)$/i.test(v))) return;
+
+      const rowData: Record<string, string> = {};
+      if (finalHeaders.length > 0) {
+        for (let k = 0; k < Math.max(finalHeaders.length, values.length); k++) {
+          const header = finalHeaders[k] ?? `Col ${k + 1}`;
+          if (values[k]) rowData[header] = values[k]!;
+        }
+      } else {
+        values.forEach((v, k) => {
+          if (v) rowData[`Col ${k + 1}`] = v;
+        });
+      }
+      if (Object.keys(rowData).length > 0) rows.push(rowData);
     });
 
-    if (rows.length > 0 || headers.length > 0) {
-      result.push({ caption, headers: finalHeaders, rows });
+    if (rows.length > 0) {
+      result.push({
+        caption,
+        headers: finalHeaders.length
+          ? finalHeaders
+          : Object.keys(rows[0] ?? {}),
+        rows,
+      });
     }
   });
-
   return result;
 }
 
-function extractKeyValues($: cheerio.CheerioAPI): Record<string, string> {
+function extractKeyValues($: CheerioAPI): Record<string, string> {
   const kv: Record<string, string> = {};
 
-  // DL/DT/DD pairs
   $("dl").each((_i, dl) => {
-    const $dl = $(dl);
-    $dl.find("dt").each((_j, dt) => {
-      const key = cleanText(collectText(dt as Element, $));
-      const $dd = $(dt).next("dd");
-      if (key && $dd.length) {
-        kv[key] = cleanText(collectText($dd.get(0) as Element, $));
-      }
-    });
+    $(dl)
+      .find("dt")
+      .each((_j, dt) => {
+        const key = textOf($, dt as Element);
+        const dd = $(dt).next("dd").get(0) as Element | undefined;
+        if (key && dd) {
+          const value = textOf($, dd);
+          if (value) kv[key] = value;
+        }
+      });
   });
 
-  // Label + input/value patterns
-  $(
-    ".form-group, .field, .mb-3, [class*='field'], li.field",
-  ).each((_i, group) => {
+  $(".form-group, .field, .mb-3").each((_i, group) => {
     const $group = $(group);
-    const labelEl = $group
-      .find("label, .label, .form-label")
-      .get(0) as Element | undefined;
-    const label = labelEl ? cleanText(collectText(labelEl, $)) : "";
-    if (!label) return;
-    const valueEl = $group
-      .find(
-        "input, select, textarea, .form-control-static, .form-text, .value, span.value, .field-value",
-      )
-      .first();
+    const labelEl = $group.find("label, .control-label").get(0) as Element | undefined;
+    const label = labelEl ? textOf($, labelEl).replace(/\*$/, "").trim() : "";
+    if (!label || label.length > 80) return;
+    const input = $group.find("input:not([type=hidden]):not([type=submit]), select, textarea").first();
     let value = "";
-    if (valueEl.length) {
-      const tag = valueEl.get(0)!.tagName;
-      if (tag === "input") {
-        value = (valueEl.val() as string) ?? valueEl.attr("value") ?? "";
-      } else if (tag === "select") {
-        value = valueEl.find("option:selected").text().trim();
+    if (input.length) {
+      const tag = input.get(0)!.tagName;
+      if (tag === "select") {
+        value = input.find("option:selected").text().trim();
+      } else if (tag === "input" && input.attr("type") === "radio") {
+        value = $group.find("input:checked").parent().text().replace(/\s+/g, " ").trim();
+      } else if (tag === "input" && input.attr("type") === "checkbox") {
+        value = input.is(":checked") ? "Yes" : "No";
       } else {
-        value = cleanText(
-          collectText(valueEl.get(0) as Element, $),
-        );
+        value = String(input.val() ?? input.attr("value") ?? "").trim();
       }
-    } else {
-      value = cleanText(collectText($group.get(0) as Element, $));
-      value = value.replace(new RegExp(`^${escapeRegex(label)}`), "").trim();
     }
     if (label && value && !kv[label]) kv[label] = value;
   });
 
-  // th/td pairs in tables that look like key-value
   $("table").each((_i, table) => {
     const $table = $(table);
     const rows = $table.find("tbody tr, > tr");
-    if (rows.length === 0) return;
-    let isKv = true;
+    let isKv = rows.length > 0;
     rows.each((_j, row) => {
       const first = $(row).find("th, td").first();
       if (!first.is("th") && !first.text().trim().endsWith(":")) isKv = false;
     });
     if (!isKv) return;
-
     rows.each((_j, row) => {
       const cells = $(row).find("th, td");
       if (cells.length >= 2) {
-        const key = cleanText(
-          collectText(cells.get(0) as Element, $),
-        ).replace(/:$/, "");
-        const value = cleanText(
-          collectText(cells.get(1) as Element, $),
-        );
+        const key = textOf($, cells.get(0) as Element).replace(/:$/, "");
+        const value = textOf($, cells.get(1) as Element);
         if (key && value && !kv[key]) kv[key] = value;
       }
     });
   });
 
-  // Table cells with data-label attributes
-  $("td[data-label]").each((_i, cell) => {
-    const $cell = $(cell);
-    const label = $cell.attr("data-label")?.trim();
-    const value = cleanText(collectText(cell as Element, $));
-    if (label && value && !kv[label]) kv[label] = value;
-  });
-
   return kv;
 }
 
-function extractLists($: cheerio.CheerioAPI): HtmlList[] {
+function extractLists($: CheerioAPI): HtmlList[] {
   const result: HtmlList[] = [];
-
-  $("ul.list-group, ol.list-group, ul.list, ol.list, > ul, > ol").each(
+  $("ul.list-unstyled, ul.list-group, ol.list-group, .flex-item-list").each(
     (_i, listEl) => {
       const $list = $(listEl);
-      let label: string | undefined;
       const prev = $list
-        .prevAll("h1, h2, h3, h4, h5, h6, label, .list-title, legend")
-        .first();
-      if (prev.length) {
-        label = cleanText(collectText(prev.get(0) as Element, $)) || undefined;
-      }
-
-      const items: string[] = [];
-      $list.find("> li").each((_j, li) => {
-        const text = cleanText(collectText(li as Element, $));
-        if (text) items.push(text);
-      });
-
-      if (items.length > 0) {
-        result.push({ label, items });
-      }
-    },
-  );
-
-  $(
-    ".card-body, .container, .content, main, [role='main']",
-  ).each((_i, container) => {
-    const $container = $(container);
-    $container.find("> ul, > ol").each((_j, listEl) => {
-      const $list = $(listEl);
-      const prev = $list
-        .prevAll("h1, h2, h3, h4, h5, h6, label, .list-title, legend")
+        .prevAll("h1, h2, h3, h4, .panel-heading, legend")
         .first();
       const label = prev.length
-        ? cleanText(collectText(prev.get(0) as Element, $)) || undefined
+        ? textOf($, prev.get(0) as Element) || undefined
         : undefined;
-
       const items: string[] = [];
-      $list.find("> li").each((_k, li) => {
-        const text = cleanText(collectText(li as Element, $));
+      $list.find("> li, > a.group, > .flex-item").each((_j, li) => {
+        const text = textOf($, li as Element);
         if (text) items.push(text);
       });
-
-      if (items.length > 0) {
-        const exists = result.some(
-          (r) => JSON.stringify(r.items) === JSON.stringify(items),
-        );
-        if (!exists) {
-          result.push({ label, items });
-        }
-      }
-    });
-  });
-
+      if (items.length > 0) result.push({ label, items });
+    },
+  );
   return result;
 }
 
-function extractSections($: cheerio.CheerioAPI): HtmlSection[] {
+function extractSections($: CheerioAPI): HtmlSection[] {
   const result: HtmlSection[] = [];
-
-  $(".accordion-item, .card, .section, fieldset").each((_i, sectionEl) => {
-    const $section = $(sectionEl);
-    const headerEl = $section
-      .find(
-        ".accordion-header, .accordion-button, .card-header, .section-title, h1, h2, h3, h4, h5, h6, legend",
-      )
-      .first();
-    if (!headerEl.length) return;
-
-    const level = headerEl.is("legend")
-      ? 3
-      : Number(headerEl.get(0)!.tagName.replace("h", ""));
-    const heading = cleanText(collectText(headerEl.get(0) as Element, $));
-    if (!heading) return;
-
-    const body = $section.find(
-      ".accordion-body, .card-body, .section-body, .panel-body, .content",
-    );
-    const content: string[] = [];
-    if (body.length) {
-      body
-        .find("p:not(:empty), .text-muted, .description, .help-text, .info")
-        .each((_j, p) => {
-          const text = cleanText(collectText(p as Element, $));
-          if (text) content.push(text);
-        });
-      if (content.length === 0) {
-        const text = cleanText(collectText(body.get(0) as Element, $));
-        if (text) content.push(text);
-      }
-    }
-
-    result.push({ level, heading, content });
-  });
-
-  $("h1, h2, h3, h4, h5, h6").each((_i, headingEl) => {
+  $("h1, h2, h3").each((_i, headingEl) => {
     const $heading = $(headingEl);
-    if ($heading.closest(".accordion-item, .card, .section").length) return;
-
+    if ($heading.closest(".panel-heading").length) return;
     const level = Number(headingEl.tagName.replace("h", ""));
-    const heading = cleanText(collectText(headingEl as Element, $));
-    if (!heading) return;
-
+    const heading = textOf($, headingEl as Element);
+    if (!heading || heading.length > 120) return;
     const content: string[] = [];
     let next = $heading.next();
-    while (next.length && !next.is("h1, h2, h3, h4, h5, h6")) {
-      if (next.is("p, div.text-muted, .description, .help-text")) {
-        const text = cleanText(collectText(next.get(0) as Element, $));
+    while (next.length && !next.is("h1, h2, h3, table, ul, ol")) {
+      if (next.is("p, .text-muted, .description, .help-block")) {
+        const text = textOf($, next.get(0) as Element);
         if (text) content.push(text);
       }
-      if (next.is("hr, nav, footer")) break;
       next = next.next();
     }
-
     result.push({ level, heading, content });
   });
-
   return result;
 }
 
-function extractLinks($: cheerio.CheerioAPI): HtmlLink[] {
-  const result: HtmlLink[] = [];
-  const seen = new Set<string>();
+function extractItems($: CheerioAPI): HtmlItem[] {
+  const items: HtmlItem[] = [];
 
-  $("a[href]").each((_i, a) => {
-    const $a = $(a);
-    const href = $a.attr("href") ?? "";
-    const text = cleanText(collectText(a as Element, $));
-    if (!text || !href || href === "#" || href.startsWith("javascript:")) return;
-
-    const key = `${href}|${text}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-
-    result.push({ text, href });
-  });
-
-  return result;
-}
-
-function extractForms($: cheerio.CheerioAPI): HtmlForm[] {
-  const result: HtmlForm[] = [];
-
-  $("form").each((_i, formEl) => {
-    const $form = $(formEl);
-    const action = $form.attr("action") ?? "";
-    const method = ($form.attr("method") ?? "GET").toUpperCase();
-
-    const fields: string[] = [];
-    $form.find("input, select, textarea").each((_j, input) => {
-      const $input = $(input);
-      const name = $input.attr("name");
-      const type = $input.attr("type");
-      if (name && type !== "hidden" && type !== "submit") {
-        fields.push(name);
-      }
+  // News rows
+  $(".row.news").each((_i, el) => {
+    const $el = $(el);
+    const titleEl = $el.find(".news-title a, h3 a, h3").first();
+    const title = textOf($, titleEl.get(0) as Element | undefined);
+    if (!title) return;
+    const href = titleEl.is("a")
+      ? titleEl.attr("href")
+      : $el.find("a").first().attr("href");
+    const metaText = $el
+      .find(".news-meta, .text-muted, small")
+      .first()
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+    const body = $el
+      .find(".news-content, .news-body, p")
+      .first()
+      .text()
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 280);
+    items.push({
+      title,
+      ...(href ? { href } : {}),
+      ...(metaText ? { subtitle: metaText } : {}),
+      ...(body && body !== title ? { body } : {}),
     });
-
-    result.push({ action, method, fields });
   });
 
-  return result;
-}
+  // Group cards
+  if (items.length === 0) {
+    $("a.group, .flex-item.group, .media").each((_i, el) => {
+      const $el = $(el);
+      const title =
+        textOf($, $el.find("h4, .media-heading, .item-label").first().get(0) as Element | undefined) ||
+        textOf($, el as Element);
+      if (!title || title.length > 80) return;
+      const href = $el.is("a") ? $el.attr("href") : $el.find("a").first().attr("href");
+      items.push({ title, ...(href ? { href } : {}) });
+    });
+  }
 
-function extractMetadata($: cheerio.CheerioAPI): Record<string, string> {
-  const meta: Record<string, string> = {};
+  // Generic panel body list links (latest etc already stripped)
+  if (items.length === 0) {
+    $(".panel-body ul li a, .list-group-item").each((_i, el) => {
+      const $el = $(el);
+      const title = textOf($, el as Element);
+      if (!title || title.length > 120) return;
+      const href = $el.is("a") ? $el.attr("href") : $el.find("a").attr("href");
+      items.push({ title, ...(href ? { href } : {}) });
+    });
+  }
 
-  $(
-    "[name='_token'], [name='csrf_token'], [name='csrf-token'], [name*='csrf'], [name*='token']",
-  ).each((_i, el) => {
-    const $el = $(el);
-    const value = ($el.val() as string) ?? $el.attr("content") ?? "";
-    if (value && value.length > 5) {
-      meta["_csrf_present"] = "yes";
-    }
+  // Deduplicate by title
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.title)) return false;
+    seen.add(item.title);
+    return true;
   });
-
-  $("meta").each((_i, el) => {
-    const $el = $(el);
-    const name = $el.attr("name") ?? $el.attr("property") ?? "";
-    const content = $el.attr("content") ?? "";
-    if (name && content) {
-      meta[name] = content;
-    }
-  });
-
-  const navItems = $("nav a, .nav-link, .navbar-nav .nav-item").length;
-  if (navItems > 0) meta["_nav_items"] = String(navItems);
-
-  $("nav .active, .nav-item.active, .nav-link.active").each((_i, el) => {
-    const text = cleanText(collectText(el as Element, $));
-    if (text) meta["_active_nav"] = text;
-  });
-
-  $(
-    ".user-info, .user-name, .account-name, .navbar-text, .user-menu, .dropdown-user",
-  ).each((_i, el) => {
-    const text = cleanText(collectText(el as Element, $));
-    if (text && text.length > 1 && text.length < 100) {
-      meta["_user"] = text;
-    }
-  });
-
-  return meta;
 }
 
 export function isHtmlResponse(
@@ -464,8 +445,4 @@ export function isHtmlResponse(
   if (typeof value !== "string") return false;
   if (contentType?.toLowerCase().includes("text/html")) return true;
   return /^\s*<!doctype html|^\s*<html[\s>]/i.test(value);
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

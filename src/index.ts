@@ -25,11 +25,18 @@ export {
   type HtmlTable,
   type HtmlList,
   type HtmlSection,
-  type HtmlLink,
-  type HtmlForm,
+  type HtmlItem,
   isHtmlResponse,
   summarizeHtml,
 } from "./Core/HtmlSummary.js";
+export { ModulePageService } from "./Modules/ModulePageService.js";
+export type { ModuleListResult } from "./Modules/ModulePageService.js";
+export { TimetableService } from "./Timetable/TimetableService.js";
+export type {
+  TimetableChange,
+  TimetableLesson,
+  TimetableWeek,
+} from "./Timetable/TimetableTypes.js";
 export {
   assertSameOrigin,
   type NormalizedInstance,

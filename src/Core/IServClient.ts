@@ -6,8 +6,10 @@ import { ConferenceService } from "../Conference/ConferenceService.js";
 import { EmailService } from "../Email/EmailService.js";
 import { FilesService } from "../Files/FilesService.js";
 import { MessengerService } from "../Messenger/MessengerService.js";
+import { ModulePageService } from "../Modules/ModulePageService.js";
 import { NotificationService } from "../Notifications/NotificationService.js";
 import { routeCatalog } from "../Routes/RouteCatalog.js";
+import { TimetableService } from "../Timetable/TimetableService.js";
 import { UserService } from "../User/UserService.js";
 import { isHtmlResponse, summarizeHtml } from "./HtmlSummary.js";
 import type { HtmlExtractedData } from "./HtmlSummary.js";
@@ -39,33 +41,29 @@ export interface ReadRouteResult {
 
 function buildHtmlSummary(extracted: HtmlExtractedData): string {
   const parts: string[] = [];
-  if (extracted.title) parts.push(`Page: ${extracted.title}`);
-  if (extracted.sections.length > 0) {
-    const headings = extracted.sections.map((s) => s.heading);
-    parts.push(`Sections: ${headings.join(", ")}`);
-  }
-  if (extracted.keyValues && Object.keys(extracted.keyValues).length > 0) {
-    const kvs = Object.entries(extracted.keyValues)
-      .slice(0, 5)
-      .map(([k, v]) => `${k}=${v.length > 40 ? v.slice(0, 40) + "..." : v}`);
-    parts.push(`Fields: ${kvs.join(", ")}`);
-  }
+  if (extracted.title) parts.push(extracted.title);
+  if (extracted.emptyMessage) parts.push(extracted.emptyMessage);
+  if (extracted.items?.length) parts.push(`${extracted.items.length} items`);
   for (const table of extracted.tables) {
     parts.push(
       `Table${table.caption ? ` "${table.caption}"` : ""}: ${table.rows.length} rows`,
     );
   }
-  if (extracted.links.length > 0) parts.push(`${extracted.links.length} links`);
-  return parts.join(" | ");
+  if (extracted.keyValues && Object.keys(extracted.keyValues).length > 0) {
+    parts.push(`${Object.keys(extracted.keyValues).length} fields`);
+  }
+  return parts.join(" · ");
 }
 
 function buildJsonSummary(parsed: unknown): string | undefined {
-  if (Array.isArray(parsed)) {
-    return `${parsed.length} items`;
-  }
+  if (Array.isArray(parsed)) return `${parsed.length} items`;
   if (parsed && typeof parsed === "object") {
-    const keys = Object.keys(parsed as Record<string, unknown>);
-    if (keys.length <= 10) return undefined; // show directly
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.items)) return `${obj.items.length} items`;
+    if (Array.isArray(obj.rows)) return `${obj.rows.length} rows`;
+    if (obj.title && typeof obj.title === "string") return obj.title;
+    const keys = Object.keys(obj);
+    if (keys.length <= 10) return undefined;
     return `${keys.length} fields`;
   }
   return undefined;
@@ -80,6 +78,8 @@ export class IServAPI {
   readonly files: FilesService;
   readonly conference: ConferenceService;
   readonly messenger: MessengerService;
+  readonly timetable: TimetableService;
+  readonly modules: ModulePageService;
 
   private readonly auth: AuthService;
   private readonly session: IServSession;
@@ -95,6 +95,8 @@ export class IServAPI {
     this.files = new FilesService(session);
     this.conference = new ConferenceService(session);
     this.messenger = new MessengerService(session);
+    this.timetable = new TimetableService(session);
+    this.modules = new ModulePageService(session);
   }
 
   static async connect(
@@ -146,6 +148,87 @@ export class IServAPI {
     await this.auth.authenticateMessenger();
   }
 
+  /**
+   * Prefer dedicated structured loaders over raw HTML extraction for known modules.
+   */
+  private async loadStructured(
+    routeId: string,
+    parameters: Record<string, string | number | boolean>,
+  ): Promise<unknown | undefined> {
+    switch (routeId) {
+      case "timetable.overview":
+        return this.timetable.getWeek({
+          startDate:
+            typeof parameters.start === "string"
+              ? parameters.start
+              : typeof parameters.startDate === "string"
+                ? parameters.startDate
+                : undefined,
+        });
+      case "exercise.list":
+        return this.modules.listExercises({
+          search:
+            typeof parameters["filter[search]"] === "string"
+              ? parameters["filter[search]"]
+              : typeof parameters.search === "string"
+                ? parameters.search
+                : undefined,
+        });
+      case "exercise.past":
+        return this.modules.listPastExercises();
+      case "news.list":
+        return this.modules.listNews({
+          search: typeof parameters.search === "string" ? parameters.search : undefined,
+        });
+      case "news.show":
+        if (typeof parameters.id === "string" || typeof parameters.id === "number") {
+          return this.modules.showNews(String(parameters.id));
+        }
+        return undefined;
+      case "forums.list":
+        return this.modules.listForums();
+      case "poll.list":
+        return this.modules.listPolls();
+      case "etherpad.list":
+        return this.modules.listEtherpads();
+      case "mailing_lists.list":
+        return this.modules.listMailingLists();
+      case "groupview.overview":
+        return this.modules.listGroups();
+      case "course_selection.list":
+        return this.modules.listCourseSelections();
+      case "print.overview":
+        return this.modules.listPrintJobs();
+      case "office.overview":
+        return this.modules.getOfficeInfo();
+      case "account.settings":
+        return this.modules.getAccountSettings();
+      case "account.last_logins":
+        return this.modules.getAccountLogins();
+      case "account.info":
+        return this.modules.getAccountInfoPage();
+      case "help.overview":
+        return this.modules.getHelpOverview();
+      case "conference.health":
+        return this.conference.getHealth();
+      case "calendar.upcoming":
+        return this.calendar.getUpcomingEvents();
+      case "calendar.sources":
+        return this.calendar.getEventSources();
+      case "notifications.list":
+        return this.notifications.getAll();
+      case "notifications.badges":
+        return this.notifications.getBadges();
+      case "files.quota":
+        return this.files.getDiskSpace();
+      case "account.get":
+      case "profile.get":
+        return this.users.getOwnInfo();
+      default:
+        return undefined;
+    }
+  }
+
   async executeReadRoute(
     routeId: string,
     parameters: Record<string, string | number | boolean> = {},
@@ -159,6 +242,26 @@ export class IServAPI {
     ) {
       throw new Error(`Route ${routeId} is not eligible for the read-only executor`);
     }
+
+    const startedAt = performance.now();
+
+    // Prefer structured loaders
+    try {
+      const structured = await this.loadStructured(routeId, parameters);
+      if (structured !== undefined) {
+        const redacted = redactValue(structured);
+        return {
+          routeId,
+          status: 200,
+          durationMs: Math.round(performance.now() - startedAt),
+          data: redacted,
+          _summary: buildJsonSummary(structured),
+        };
+      }
+    } catch {
+      // Fall through to generic HTML/JSON path
+    }
+
     let path = route.path;
     const query: Record<string, string | number | boolean> = {};
     for (const parameter of route.parameters) {
@@ -174,7 +277,6 @@ export class IServAPI {
       }
     }
     if (/\{[^}]+\}/.test(path)) throw new Error("Unresolved route path parameter");
-    const startedAt = performance.now();
     const response = await this.session.http.get(`${this.session.baseUrl()}${path}`, {
       params: query,
     });
@@ -185,7 +287,8 @@ export class IServAPI {
     let summary: string | undefined;
     if (isHtmlResponse(response.data, contentType)) {
       const extracted = summarizeHtml(response.data);
-      data = extracted;
+      // Prefer compact projection for CLI/MCP
+      data = projectExtracted(extracted);
       summary = buildHtmlSummary(extracted);
     } else {
       try {
@@ -196,12 +299,11 @@ export class IServAPI {
         data = "[redacted-non-json-response]";
       }
     }
-    const redacted = redactValue(data);
     return {
       routeId,
       status: response.status,
       durationMs: Math.round(performance.now() - startedAt),
-      data: redacted,
+      data: redactValue(data),
       _summary: summary,
     };
   }
@@ -242,4 +344,43 @@ export class IServAPI {
   async disconnect(): Promise<void> {
     await this.auth.logout();
   }
+}
+
+/** Compact projection: drop empty chrome fields from HtmlExtractedData. */
+function projectExtracted(extracted: HtmlExtractedData): unknown {
+  const out: Record<string, unknown> = {
+    title: extracted.title,
+  };
+  if (extracted.emptyMessage) out.message = extracted.emptyMessage;
+  if (extracted.items?.length) out.items = extracted.items;
+  if (extracted.tables.length === 1) {
+    out.headers = extracted.tables[0]!.headers;
+    out.rows = extracted.tables[0]!.rows;
+  } else if (extracted.tables.length > 1) {
+    out.tables = extracted.tables.map((t) => ({
+      ...(t.caption ? { caption: t.caption } : {}),
+      headers: t.headers,
+      rows: t.rows,
+    }));
+  }
+  if (Object.keys(extracted.keyValues).length) out.fields = extracted.keyValues;
+  if (extracted.lists.length) out.lists = extracted.lists;
+  if (extracted.sections.length) {
+    out.sections = extracted.sections.map((s) => ({
+      heading: s.heading,
+      ...(s.content.length ? { content: s.content } : {}),
+    }));
+  }
+  // If almost empty, keep a clear empty message
+  if (
+    !out.items &&
+    !out.rows &&
+    !out.tables &&
+    !out.fields &&
+    !out.lists &&
+    !out.message
+  ) {
+    out.message = "No structured content found on this page.";
+  }
+  return out;
 }

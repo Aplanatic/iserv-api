@@ -1,6 +1,6 @@
 {
   "name": "@aplanatic/iserv-api",
-  "version": "1.7.4",
+  "version": "1.8.0",
   "description": "Unofficial typed SDK, route catalog, and local explorer for IServ school servers",
   "type": "module",
   "main": "./dist/index.cjs",

@@ -15,6 +15,11 @@ export {
 export { type ProfileMetadata, ProfileStore } from "./Auth/ProfileStore.js";
 export { IServApiError, IServAuthError } from "./Core/Errors.js";
 export {
+  type HtmlStructureSummary,
+  isHtmlResponse,
+  summarizeHtml,
+} from "./Core/HtmlSummary.js";
+export {
   assertSameOrigin,
   type NormalizedInstance,
   normalizeInstanceUrl,

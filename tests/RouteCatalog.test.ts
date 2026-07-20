@@ -17,6 +17,30 @@ describe("RouteCatalog", () => {
     expect(catalog.search("webdav").map((route) => route.id)).toContain("files.webdav");
     expect(catalog.tree().calendar?.length).toBeGreaterThan(1);
     expect(catalog.get("messenger.send").sideEffect).toBe("communicative");
+    expect(catalog.get("news.show")).toMatchObject({
+      status: "supported",
+      lastVerified: "2026-07-20",
+      provenance: { kind: "live-contract" },
+    });
+    expect(catalog.get("pinboard.list").status).toBe("experimental");
+  });
+
+  test("classifies all newly discovered module routes as read-only", () => {
+    const modules = [
+      "exercise",
+      "timetable",
+      "poll",
+      "forums",
+      "news",
+      "course-selection",
+      "mailing-lists",
+      "print",
+      "pinboard",
+    ];
+    const discovered = ROUTES.filter((route) => modules.includes(route.module));
+    expect(discovered.length).toBeGreaterThanOrEqual(12);
+    expect(discovered.every((route) => route.method === "GET")).toBe(true);
+    expect(discovered.every((route) => route.sideEffect === "read")).toBe(true);
   });
 
   test("rejects duplicate route IDs", () => {

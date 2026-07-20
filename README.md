@@ -28,6 +28,23 @@ operating system credential store. `routeCatalog` exposes typed route metadata a
 `npm run explorer:dev` starts the three-pane documentation explorer. Its live proxy
 is loopback-only, launch-token protected, redacted, and limited to catalogued GET routes.
 
+## Read-only module discovery
+
+The catalog includes live-verified normal-user overview routes for exercises, timetable,
+polls, forums, news, course selection, mailing lists, and printing. Execute one only by
+its fixed catalog ID:
+
+```ts
+const client = await new AuthBroker().restore();
+const result = await client.executeReadRoute("exercise.list");
+```
+
+Authenticated HTML is returned as a `HtmlStructureSummary`: DOM counts only, never page
+text, URLs, attributes, identifiers, or form values. Experimental or write-capable routes
+are rejected by `executeReadRoute`. Local contract checks reuse the native-keychain profile
+and can be enabled explicitly with `ISERV_LIVE=1 npm run test:live`; no credential file is
+read or supported.
+
 ## Table of contents
 
 - [Installation](#installation)

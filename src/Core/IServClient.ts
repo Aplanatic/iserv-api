@@ -8,6 +8,7 @@ import { MessengerService } from "../Messenger/MessengerService.js";
 import { NotificationService } from "../Notifications/NotificationService.js";
 import { routeCatalog } from "../Routes/RouteCatalog.js";
 import { UserService } from "../User/UserService.js";
+import { isHtmlResponse, summarizeHtml } from "./HtmlSummary.js";
 import { parseJson } from "./HttpClient.js";
 import { IServSession } from "./IServSession.js";
 import { redactValue } from "./Redaction.js";
@@ -92,7 +93,8 @@ export class IServAPI {
     if (
       route.method !== "GET" ||
       route.sideEffect !== "read" ||
-      route.authentication !== "session"
+      route.authentication !== "session" ||
+      route.status !== "supported"
     ) {
       throw new Error(`Route ${routeId} is not eligible for the read-only executor`);
     }
@@ -115,11 +117,18 @@ export class IServAPI {
     const response = await this.session.http.get(`${this.session.baseUrl()}${path}`, {
       params: query,
     });
-    let data: unknown = response.data;
-    try {
-      data = parseJson(response.data, routeId);
-    } catch {
-      // HTML and text responses remain text and are still redacted.
+    const contentType = Array.isArray(response.headers["content-type"])
+      ? response.headers["content-type"][0]
+      : response.headers["content-type"];
+    let data: unknown;
+    if (isHtmlResponse(response.data, contentType)) {
+      data = summarizeHtml(response.data);
+    } else {
+      try {
+        data = parseJson(response.data, routeId);
+      } catch {
+        data = "[redacted-non-json-response]";
+      }
     }
     return {
       routeId,

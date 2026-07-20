@@ -1,12 +1,15 @@
 # Aplanatic IServ API
 
-Private, unofficial TypeScript SDK, canonical normal-user route catalog, native-keychain
-profile authentication, and local route explorer for IServ school management servers.
+Unofficial TypeScript SDK, canonical normal-user route catalog, native-keychain profile
+authentication, and local route explorer for IServ school management servers.
 It does not bypass permissions or require an administrator-created OAuth client.
 
 ## Installation
 
-```bash
+Packages are distributed through GitHub Packages. Configure npm authentication for the
+`@aplanatic` scope, then install:
+
+```sh
 npm install @aplanatic/iserv-api --registry=https://npm.pkg.github.com
 ```
 
@@ -23,8 +26,9 @@ console.log(info);
 await api.disconnect();
 ```
 
-For reusable sessions, use `AuthBroker`; secrets and cookies are stored only in the
-operating system credential store. `routeCatalog` exposes typed route metadata and
+For reusable sessions, use `AuthBroker`; the password is used only during login and is not
+persisted afterward. Scoped session cookies and tokens are stored only in the operating
+system credential store. `routeCatalog` exposes typed route metadata and
 `npm run explorer:dev` starts the three-pane documentation explorer. Its live proxy
 is loopback-only, launch-token protected, redacted, and limited to catalogued GET routes.
 
@@ -100,6 +104,20 @@ not exercised against the real account because some installations may change its
 state. Mutation routes are catalogued and tested with mocks, not executed on the real
 account. The local live suite currently runs 25 safe checks.
 
+## Security and privacy
+
+Read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Never post a real
+instance hostname, username, screenshot, HAR file, cookie, token, password, or live
+response in an issue or pull request. Security reports must use GitHub private
+vulnerability reporting.
+
+Repository CI scans both the current tree and complete reachable Git history. Network
+clients require HTTPS, reject unsafe instance targets by default, and block cross-origin
+authentication redirects. The explorer binds only to loopback and accepts only tokenized,
+catalogued read requests.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for sanitized route and test requirements.
+
 ## Table of contents
 
 - [Installation](#installation)
@@ -107,6 +125,7 @@ account. The local live suite currently runs 25 safe checks.
 - [Read-only module discovery](#read-only-module-discovery)
 - [Fast search and bounded batches](#fast-search-and-bounded-batches)
 - [Coverage status](#coverage-status)
+- [Security and privacy](#security-and-privacy)
 - [Supported functionality](#supported-functionality)
   - [Own account](#own-account)
     - [Get own user info](#get-own-user-info)

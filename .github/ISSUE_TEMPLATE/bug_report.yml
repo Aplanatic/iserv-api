@@ -1,0 +1,42 @@
+name: Sanitized bug report
+description: Report a reproducible problem without live instance or account data.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Security vulnerabilities belong in private vulnerability reporting. Never attach
+        real hostnames, identities, screenshots, HAR files, tokens, cookies, or responses.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy checks
+      options:
+        - label: This is not a security vulnerability.
+          required: true
+        - label: All instance, account, and response data is synthetic or redacted.
+          required: true
+        - label: Reproduction uses only normal-user permissions.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: 1.7.3
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Describe the difference using synthetic values only.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal sanitized reproduction
+      render: sh
+    validations:
+      required: true

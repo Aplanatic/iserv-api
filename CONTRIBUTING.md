@@ -15,6 +15,8 @@ Contributions are welcome when they preserve the normal-user, least-privilege sc
 
 Every route needs a stable ID, authentication method, side-effect classification,
 capability, parameters, provenance, implementation state, and verification metadata.
+Prefer a structured loader (`ModulePageService`, `TimetableService`, and similar) when the
+page has stable content; otherwise fall through to `HtmlExtractedData` via `summarizeHtml`.
 Add a mocked contract test. Live checks are local-only, opt-in, bounded, and read-only;
 they must never print response data or identifiers.
 

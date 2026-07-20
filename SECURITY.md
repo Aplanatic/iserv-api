@@ -24,7 +24,9 @@ or routes without authorization.
   flow is explicitly used; stored cookies are scoped back to that instance.
 - Normal-user access is not a mechanism for bypassing permissions or probing admin routes.
 - Credentials, sessions, and scoped tokens use the native operating-system credential
-  store only; there is no file fallback.
+  store only; there is no file fallback. Ephemeral login may omit the password from the
+  keychain while still storing scoped session cookies.
+- Instance hostnames must be real DNS names (path-like and single-label values are rejected).
 - The explorer is loopback-only, token-protected, GET-only, and restricted to catalogued
   read routes.
 - Logs, traces, fixtures, issues, tests, and release assets must contain only synthetic or

@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.8.14 - 2026-07-20
+
+- Harden messenger last-message display so room envelopes never surface `[object Object]`.
+
+## 1.8.13 - 2026-07-20
+
+- Fix messenger last-message display for nested room envelope shapes.
+
+## 1.8.12 - 2026-07-20
+
+- Allow mail attachment paths that are relative, absolute, or `~/…` (`resolveAttachmentPath`).
+- Add `files.listWebDav()` convenience listing.
+- Support `AuthBroker.login({ ephemeral: true })` (cookies only; password omitted from keychain).
+- Add `AuthBroker.logoutAll()`.
+
+## 1.8.11 - 2026-07-20
+
+- File-lock and `.bak` backup for profile documents.
+- Mail send idempotency support for safe retries.
+- Explorer bind-port hardening (still loopback + launch token).
+
+## 1.8.10 - 2026-07-20
+
+- Per-request HTTP timeouts (`ISERV_TIMEOUT_MS`, default 30s).
+- Limited retries for HTTP 429 responses.
+- Distinct `Aplanatic-IServ/<version>` User-Agent product token.
+- Path-redacted debug stacks.
+
+## 1.8.9 - 2026-07-20
+
+- Reject path-like and single-label instance hostnames in `normalizeInstanceUrl`.
+
+## 1.8.8 - 2026-07-20
+
+- Logout-safe write gating for consumers.
+- Messenger body extraction hardening and QA fixes.
+
+## 1.8.7 - 2026-07-20
+
+- Timetable `getToday()` and related grid improvements.
+- Mail listing paging / ~200-message server page awareness.
+- Additional QA hardening across modules.
+
+## 1.8.5 - 2026-07-20
+
+- Raise redaction list caps.
+- Clarify timetable visibility when the instance withholds the grid.
+
+## 1.8.4 - 2026-07-20
+
+- Add `messenger.getContacts()` to resolve Matrix DM contacts to display names.
+
+## 1.8.3 - 2026-07-20
+
+- Add `calendar.getHolidays()` school-holiday / public-holiday countdown overview.
+
+## 1.8.2 - 2026-07-20
+
+- Validate timetable date ranges and news article ids.
+- Fill missing timetable period gaps in the structured grid.
+
+## 1.8.1 - 2026-07-20
+
+- Add `presentForDisplay()` for human-oriented mail, rooms, account, and module payloads.
+
+## 1.8.0 - 2026-07-20
+
+- Structured module parsers (`ModulePageService`) for news, exercises, forums, and related pages.
+- Real timetable grid via `TimetableService` (`getMeta`, `getWeek`, `getToday`).
+- HTML overview extraction upgraded from structure counts to `HtmlExtractedData`
+  (`kind: "html-extracted"`).
+
+## 1.7.4 - 2026-07-20
+
+- Consumer staging bump aligned with structured HTML / module work that landed in 1.8.0.
+
 ## 1.7.3 - 2026-07-20
 
 - Block cross-origin and excessive authentication redirects before another origin is contacted.
@@ -27,14 +103,13 @@
 ### Security
 
 - Batch execution accepts only catalogued, supported, read-only session GET routes.
-- The one unverified supported read route opens a mail message and remains intentionally excluded from live probing to avoid changing read state on real accounts.
+- Opening an individual mail message remains intentionally excluded from live probing to avoid changing read state on real accounts.
 
 ## 1.4.4 - 2026-07-19
 
 ### Changed
 
 - Updated Dependencies to their latest version
-
 
 ## 1.4.3 - 2026-06-24
 
@@ -45,6 +120,7 @@
 ## 1.4.2 - 2026-05-27
 
 ### Fixed
+
 - Fixed login failing with `Login failed! Session was not established`.
 - Updated authentication to support IServ's newer app login flow.
 - Added handling for IServ's post-login redirect through `/iserv/app/authentication/redirect`.

@@ -32,6 +32,45 @@ continue to work after a restart. `routeCatalog` exposes typed route metadata an
 `npm run explorer:dev` starts the three-pane documentation explorer. Its live proxy
 is loopback-only, launch-token protected, redacted, and limited to catalogued GET routes.
 
+HTTP requests default to a 30s timeout (`ISERV_TIMEOUT_MS`), retry selected 429 responses,
+and send a browser-like `User-Agent` that includes the `Aplanatic-IServ/<version>` product
+token (override with `ISERV_USER_AGENT` when needed).
+
+### AuthBroker profiles
+
+```ts
+import { AuthBroker } from "@aplanatic/iserv-api";
+
+const broker = new AuthBroker();
+
+// Password login; omit password from the keychain when ephemeral is true
+await broker.login({
+  profile: "school",
+  url: "iserv.example",
+  username: "alice",
+  password: "…",
+  ephemeral: false,
+});
+
+// System browser login (Chrome/Edge/Chromium; no Playwright download)
+await broker.loginBrowser({
+  profile: "school",
+  url: "iserv.example",
+  username: "alice",
+  timeoutMs: 180_000,
+});
+
+const api = await broker.restore(); // active profile
+await broker.restoreMessenger(); // renew scoped Matrix session if needed
+await broker.status(); // display name, username, module capabilities
+await broker.logout(); // one profile
+await broker.logoutAll(); // every stored profile
+```
+
+Ephemeral sessions keep cookies for reuse in-process but drop the password from the
+keychain, so SMTP and WebDAV (which need the stored password) will not work until a full
+login. Cross-origin HTTP redirects are rejected before the destination is contacted.
+
 ## Read-only module discovery
 
 The catalog includes live-verified normal-user overview routes for exercises, timetable,
@@ -43,8 +82,10 @@ const client = await new AuthBroker().restore();
 const result = await client.executeReadRoute("exercise.list");
 ```
 
-Authenticated HTML is returned as a `HtmlStructureSummary`: DOM counts only, never page
-text, URLs, attributes, identifiers, or form values. Experimental or write-capable routes
+When a route has a structured loader (timetable grid, news lists, and similar), that
+payload is returned (redacted). Otherwise authenticated HTML is parsed into an
+`HtmlExtractedData` value (`kind: "html-extracted"`): title, tables, key/value pairs,
+lists, sections, and items — never raw HTML markup. Experimental or write-capable routes
 are rejected by `executeReadRoute`. Local contract checks reuse the native-keychain profile
 and can be enabled explicitly with `ISERV_LIVE=1 npm run test:live`; no credential file is
 read or supported.
@@ -56,7 +97,12 @@ write permissions are still enforced by the instance when an action is invoked.
 
 Restored profiles preserve their scoped Matrix session in the native keychain. Older
 profiles can renew it with `AuthBroker.restoreMessenger()` without asking for credentials
-again. Cross-origin HTTP redirects are rejected before the destination is contacted.
+again.
+
+Use `presentForDisplay(value)` when you want the same human-oriented projection the CLI
+uses for mail, rooms, account, and module payloads (JSON automation should keep the
+redacted original). Structured module pages are also available directly as
+`api.modules.listNews()`, `listExercises()`, `listPolls()`, and related helpers.
 
 ## Fast search and bounded batches
 
@@ -128,56 +174,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for sanitized route and test requirements
 - [Security and privacy](#security-and-privacy)
 - [Supported functionality](#supported-functionality)
   - [Own account](#own-account)
-    - [Get own user info](#get-own-user-info)
-    - [Set own user info](#set-own-user-info)
-    - [Get notifications](#get-notifications)
-    - [Get badges](#get-badges)
-    - [Read all notifications](#read-all-notifications)
-    - [Read a notification](#read-a-notification)
   - [Users](#users)
-    - [Get profile picture](#get-profile-picture)
-    - [Get profile picture buffer](#get-profile-picture-buffer)
-    - [Get user info](#get-user-info)
-    - [Search users](#search-users)
-    - [Search users autocomplete](#search-users-autocomplete)
-    - [Search messenger recipients](#search-messenger-recipients)
   - [Email](#email)
-    - [Get emails](#get-emails)
-    - [Get message](#get-message)
-    - [Send email](#send-email)
-    - [Mark as unread](#mark-as-unread)
-    - [Mark as read](#mark-as-read)
   - [Calendar](#calendar)
-    - [Get upcoming events](#get-upcoming-events)
-    - [Get event sources](#get-event-sources)
-    - [Get events](#get-events)
-    - [Search events](#search-events)
-    - [Get plugin events](#get-plugin-events)
-    - [Create event](#create-event)
-    - [Delete event](#delete-event)
+  - [Timetable](#timetable)
   - [Files](#files)
-    - [Get WebDAV client](#get-webdav-client)
-    - [Get folder size](#get-folder-size)
-    - [Get disk space](#get-disk-space)
   - [Messenger](#messenger)
-    - [Get rooms](#get-rooms)
-    - [Get messages](#get-messages)
-    - [Get messages by name](#get-messages-by-name)
-    - [Get members](#get-members)
-    - [Get profile](#get-profile)
-    - [Send message](#send-message)
-    - [Create direct message](#create-direct-message)
-    - [Leave room](#leave-room)
-    - [React to message](#react-to-message)
-    - [Edit message](#edit-message)
-    - [Reply to message](#reply-to-message)
-    - [Remove reaction](#remove-reaction)
-    - [Delete message](#delete-message)
-    - [Send message by name](#send-message-by-name)
-    - [React to message by name](#react-to-message-by-name)
-    - [Listen for messages](#listen-for-messages)
   - [Conference](#conference)
-    - [Get conference health](#get-conference-health)
 - [Logging](#logging)
 - [License](#license)
 
@@ -256,9 +259,10 @@ Saves the user's profile picture to the specified folder as `{username}.{ext}`.
 ```ts
 const buffer = await api.users.getProfilePictureBuffer("alice");
 const buffer = await api.users.getProfilePictureBuffer("alice", 128, 128);
+const own = await api.users.getOwnProfilePictureBuffer(128, 128);
 ```
 
-Returns the profile picture as a `Buffer`. Width and height must be positive integers between 1 and 4096.
+Returns the profile picture as a `Buffer`. Width and height must be positive integers between 1 and 4096. `getOwnProfilePictureBuffer` is the signed-in user shortcut.
 
 #### Get user info
 
@@ -391,6 +395,16 @@ const events = await api.calendar.getPluginEvents("holiday", "2025-01-01", "2025
 
 Plugin IDs come from event sources where `type === "plugin"`.
 
+#### Get holidays
+
+```ts
+const holidays = await api.calendar.getHolidays({ nextLimit: 12 });
+```
+
+Builds a school-holiday overview from the holiday plugin (`Ferien` / `Feiertage`) plus
+movable free days found on regular calendars. Returns `asOf`, named `seasons`, upcoming
+`next` periods, and `movable` free days with countdown status.
+
 #### Create event
 
 ```ts
@@ -463,6 +477,19 @@ await api.calendar.deleteEvent({
 
 ---
 
+### Timetable
+
+```ts
+const meta = await api.timetable.getMeta();
+const week = await api.timetable.getWeek({ startDate: "2026-07-20", endDate: "2026-07-26" });
+const today = await api.timetable.getToday({ date: "2026-07-20" });
+```
+
+Returns the structured lesson grid (periods, subjects, rooms, substitutions) rather than
+raw HTML. Visibility still depends on the account's timetable rights on the instance.
+
+---
+
 ### Files
 
 #### Get WebDAV client
@@ -514,7 +541,16 @@ The messenger service wraps the Matrix protocol used by IServ. A Matrix session 
 const rooms = await api.messenger.getRooms();
 ```
 
-Returns all joined rooms (group chats and direct messages).
+Returns all joined rooms (group chats and direct messages). `lastMessage.body` is always a
+display string (never a nested object).
+
+#### Get contacts
+
+```ts
+const contacts = await api.messenger.getContacts();
+```
+
+Resolves Matrix `m.direct` contacts to display names, room IDs, and recent-activity notes.
 
 Each room has:
 
@@ -656,7 +692,7 @@ const result = await api.messenger.deleteMessage(roomId, eventId);
 console.log(result.eventId);
 ```
 
-Redacts a message event. Throws a error if the message doesn't exist or you're not allowed to delete it.
+Redacts a message event. Throws an error if the message doesn't exist or you're not allowed to delete it.
 
 #### Send message by name
 
@@ -731,11 +767,15 @@ Returns the health status of the IServ video conference endpoint.
 
 ## Logging
 
-The SDK logs to stderr using a built-in logger. Set `ISERV_DEBUG=1` to enable debug output:
+The SDK logs to stderr using a built-in logger. Set `ISERV_DEBUG=1` to enable debug output.
+Logger output is redacted (no hostnames, cookies, tokens, or account identifiers):
 
 ```bash
 ISERV_DEBUG=1 node app.js
 ```
+
+Useful environment variables: `ISERV_TIMEOUT_MS` (default `30000`), `ISERV_USER_AGENT`,
+`ISERV_DEBUG`, and `ISERV_LIVE=1` for the opt-in live suite.
 
 ---
 

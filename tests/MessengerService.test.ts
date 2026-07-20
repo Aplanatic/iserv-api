@@ -222,7 +222,7 @@ describe("MessengerService.getMessages()", () => {
     expect(result.messages[0].encrypted).toBe(false);
     expect(result.messages[0].senderName).toBe("Alice");
     expect(result.messages[1].encrypted).toBe(true);
-    expect(result.messages[1].body).toBe("");
+    expect(result.messages[1].body).toBe("[encrypted]");
     expect(result.messages[1].senderName).toBe("@bob:server");
     expectAllRoutesCalled();
   });

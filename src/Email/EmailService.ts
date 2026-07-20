@@ -94,11 +94,21 @@ export class EmailService {
     }
 
     log.info("Got emails");
+    const resolvedTotal = typeof lastPage?.total === "number" ? lastPage.total : total;
+    const warning =
+      items.length < limit && resolvedTotal > items.length
+        ? `Requested ${limit} messages but only ${items.length} were returned by the server.`
+        : items.length === limit && resolvedTotal > limit
+          ? `Returning ${items.length} of ${resolvedTotal} messages (limit=${limit}).`
+          : undefined;
     return {
       items,
       offset,
-      total: typeof lastPage?.total === "number" ? lastPage.total : total,
-      all: typeof lastPage?.all === "number" ? lastPage.all : total,
+      total: resolvedTotal,
+      all: typeof lastPage?.all === "number" ? lastPage.all : resolvedTotal,
+      limit,
+      fetched: items.length,
+      ...(warning ? { warning } : {}),
     };
   }
 

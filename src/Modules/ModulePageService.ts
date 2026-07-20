@@ -174,6 +174,7 @@ export class ModulePageService {
       !value || /^news(\s+\d+)?$/i.test(value) || value === trimmed;
 
     const titleCandidates = [
+      clean($("meta[property='og:title']").attr("content") ?? ""),
       clean(content.find(".news-title").first().text()),
       clean(content.find(".panel-title, .panel-heading").first().text()),
       clean(content.find("article h1, article h2, .page-header h1").first().text()),
@@ -242,12 +243,22 @@ export class ModulePageService {
   }
 
   async listPastExercises(): Promise<ModuleListResult> {
-    return this.listTablePage("/iserv/exercise/past/exercise", "Past exercises", [
-      "Exercise",
-      "Deadline",
-      "Feedbacks",
-      "Tags",
-    ]);
+    // Prefer the canonical past list; fall back to the older nested path.
+    try {
+      return await this.listTablePage("/iserv/exercise/past", "Past exercises", [
+        "Exercise",
+        "Deadline",
+        "Feedbacks",
+        "Tags",
+      ]);
+    } catch {
+      return this.listTablePage("/iserv/exercise/past/exercise", "Past exercises", [
+        "Exercise",
+        "Deadline",
+        "Feedbacks",
+        "Tags",
+      ]);
+    }
   }
 
   async listForums(): Promise<ModuleListResult> {

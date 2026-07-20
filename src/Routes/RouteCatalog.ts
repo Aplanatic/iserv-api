@@ -912,7 +912,7 @@ export const ROUTES = [
     id: "exercise.past",
     module: "exercise",
     method: "GET",
-    path: "/iserv/exercise/past/exercise",
+    path: "/iserv/exercise/past",
     summary: "List past exercises",
     description: "Loads the signed-in account's past-exercise overview without changing it.",
     authentication: "session",

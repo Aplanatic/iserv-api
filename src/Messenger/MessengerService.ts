@@ -37,6 +37,20 @@ function shortMxid(userId: string): string {
   return `@${local.slice(0, 8)}…`;
 }
 
+/** Pull readable text from a Matrix room message / encrypted event. */
+function extractEventBody(event: { type?: string; content?: Record<string, unknown> }): string {
+  if (event.type === "m.room.encrypted") return "[encrypted]";
+  const content = (event.content ?? {}) as Record<string, unknown>;
+  const nestedRaw = content["m.new_content"];
+  const nested =
+    nestedRaw && typeof nestedRaw === "object" && !Array.isArray(nestedRaw)
+      ? (nestedRaw as Record<string, unknown>)
+      : undefined;
+  const raw =
+    content.body ?? content.formatted_body ?? nested?.body ?? nested?.formatted_body ?? "";
+  return String(raw);
+}
+
 function activityNote(messages: Message[], selfId: string | null): string | undefined {
   const fromOther = messages.filter((message) => message.sender !== selfId);
   if (fromOther.length === 0) return undefined;
@@ -161,10 +175,7 @@ export class MessengerService {
       const lastEvent = messageEvents.at(-1) ?? null;
       const lastMessage = lastEvent
         ? {
-            body:
-              lastEvent.type === "m.room.encrypted"
-                ? "[Encrypted message]"
-                : ((lastEvent.content.body as string) ?? ""),
+            body: extractEventBody(lastEvent),
             sender: lastEvent.sender ?? "",
             senderName: nameById.get(lastEvent.sender ?? "") ?? lastEvent.sender ?? "",
             timestamp: lastEvent.origin_server_ts ?? 0,
@@ -310,16 +321,26 @@ export class MessengerService {
 
     const messages: Message[] = data.chunk
       .filter((e) => e.type === "m.room.message" || e.type === "m.room.encrypted")
-      .map((e) => ({
-        eventId: e.event_id ?? "",
-        sender: e.sender ?? "",
-        senderName: nameById.get(e.sender ?? "") ?? e.sender ?? "",
-        body: e.type === "m.room.encrypted" ? "" : ((e.content.body as string) ?? ""),
-        msgtype:
-          e.type === "m.room.encrypted" ? "m.encrypted" : ((e.content.msgtype as string) ?? ""),
-        timestamp: e.origin_server_ts ?? 0,
-        encrypted: e.type === "m.room.encrypted",
-      }));
+      .map((e) => {
+        const content = (e.content ?? {}) as Record<string, unknown>;
+        const nestedRaw = content["m.new_content"];
+        const nested =
+          nestedRaw && typeof nestedRaw === "object" && !Array.isArray(nestedRaw)
+            ? (nestedRaw as Record<string, unknown>)
+            : undefined;
+        return {
+          eventId: e.event_id ?? "",
+          sender: e.sender ?? "",
+          senderName: nameById.get(e.sender ?? "") ?? e.sender ?? "",
+          body: extractEventBody(e),
+          msgtype:
+            e.type === "m.room.encrypted"
+              ? "m.encrypted"
+              : String(content.msgtype ?? nested?.msgtype ?? ""),
+          timestamp: e.origin_server_ts ?? 0,
+          encrypted: e.type === "m.room.encrypted",
+        };
+      });
 
     log.debug(`Got ${messages.length} messages`);
     return { messages, start: data.start, end: data.end };
@@ -691,7 +712,7 @@ export class MessengerService {
             const roomName = roomNames.get(roomId) ?? roomId;
 
             for (const event of room.timeline.events) {
-              if (event.type !== "m.room.message") continue;
+              if (event.type !== "m.room.message" && event.type !== "m.room.encrypted") continue;
               if ((event.origin_server_ts ?? 0) < startedAt) continue;
 
               const sender = event.sender ?? "";
@@ -699,10 +720,13 @@ export class MessengerService {
                 eventId: event.event_id ?? "",
                 sender,
                 senderName: memberNames.get(roomId)?.get(sender) ?? sender,
-                body: (event.content.body as string) ?? "",
-                msgtype: (event.content.msgtype as string) ?? "",
+                body: extractEventBody(event),
+                msgtype:
+                  event.type === "m.room.encrypted"
+                    ? "m.encrypted"
+                    : String(event.content?.msgtype ?? ""),
                 timestamp: event.origin_server_ts ?? 0,
-                encrypted: false,
+                encrypted: event.type === "m.room.encrypted",
               };
 
               try {

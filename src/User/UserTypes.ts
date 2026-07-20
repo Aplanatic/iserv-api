@@ -24,9 +24,17 @@ export interface UserPublicInfo {
 export interface UserInfo {
   name: string;
   email: string;
+  groups: Record<string, string>;
+  roles: string[];
+  rights: string[];
+  publicInfo: UserPublicInfo;
+  /** @deprecated Use groups */
   Groups: Record<string, string>;
+  /** @deprecated Use roles */
   Roles: string[];
+  /** @deprecated Use rights */
   Rights: string[];
+  /** @deprecated Use publicInfo */
   PublicInfo: UserPublicInfo;
 }
 

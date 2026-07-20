@@ -70,6 +70,10 @@ function presentEmailList(value: Record<string, unknown>): unknown {
   }
   return {
     title: "Inbox",
+    ...(typeof value.total === "number" ? { total: value.total } : {}),
+    ...(typeof value.fetched === "number" ? { fetched: value.fetched } : {}),
+    ...(typeof value.limit === "number" ? { limit: value.limit } : {}),
+    ...(typeof value.warning === "string" ? { warning: value.warning } : {}),
     items: items.map((item) => {
       if (!isRecord(item)) return { value: String(item) };
       const id = isRecord(item.id) ? item.id.uid : undefined;
@@ -436,25 +440,32 @@ export function presentForDisplay(value: unknown): unknown {
   }
 
   // Email message detail
-  if (isRecord(value.envelope) && isRecord(value.content)) {
+  if (isRecord(value.envelope) && (isRecord(value.content) || Array.isArray(value.content))) {
     const env = value.envelope;
-    const plain = isRecord(value.content)
-      ? Array.isArray(value.content.plain)
-        ? value.content.plain
-        : []
-      : [];
-    const body =
-      plain
+    let body = "";
+    if (isRecord(value.content)) {
+      const content = value.content;
+      const plain = Array.isArray(content.plain) ? content.plain : [];
+      const rich = Array.isArray(content.rich) ? content.rich : [];
+      body = [...plain, ...rich]
         .map((part) => (isRecord(part) ? String(part.content ?? "") : ""))
         .join("\n")
-        .trim()
-        .slice(0, 2000) || "—";
+        .trim();
+      if (!body && typeof content.body === "string") body = content.body;
+    } else if (Array.isArray(value.content)) {
+      body = value.content
+        .map((part) => (isRecord(part) ? String(part.content ?? part.body ?? "") : ""))
+        .join("\n")
+        .trim();
+    }
+    body = cleanText(body).slice(0, 8000) || "—";
     return {
       subject: cleanText(String(env.subject ?? "—")),
       from: formatAddrs(env.from),
       to: formatAddrs(env.to),
       date: shortDate(env.date),
       body,
+      ...(isRecord(env.id) && env.id.uid !== undefined ? { uid: String(env.id.uid) } : {}),
     };
   }
 

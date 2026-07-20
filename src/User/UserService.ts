@@ -98,7 +98,18 @@ export class UserService {
     const email = $profile("#user-account a[href^='mailto:']").first().text().trim();
 
     log.info("Got own user info");
-    return { name, email, Groups: groups, Roles: roles, Rights: rights, PublicInfo: publicInfo };
+    return {
+      name,
+      email,
+      groups,
+      roles,
+      rights,
+      publicInfo,
+      Groups: groups,
+      Roles: roles,
+      Rights: rights,
+      PublicInfo: publicInfo,
+    };
   }
 
   private async fetchCsrfToken(): Promise<string> {

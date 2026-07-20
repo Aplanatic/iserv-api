@@ -40,6 +40,9 @@ export interface EmailList {
   offset: number;
   total: number;
   all: number;
+  limit?: number;
+  fetched?: number;
+  warning?: string;
 }
 
 export interface EmailContentPart {

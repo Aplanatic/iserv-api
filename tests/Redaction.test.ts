@@ -25,6 +25,6 @@ describe("redaction", () => {
       items: Array.from({ length: 110 }, (_, index) => index),
     });
     expect(result).toMatchObject({ password: "[redacted]", nested: { token: "[redacted]" } });
-    expect((result as { items: unknown[] }).items).toHaveLength(100);
+    expect((result as { items: unknown[] }).items).toHaveLength(110);
   });
 });

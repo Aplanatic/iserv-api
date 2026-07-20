@@ -10,6 +10,7 @@ import { NotificationService } from "../Notifications/NotificationService.js";
 import { routeCatalog } from "../Routes/RouteCatalog.js";
 import { UserService } from "../User/UserService.js";
 import { isHtmlResponse, summarizeHtml } from "./HtmlSummary.js";
+import type { HtmlExtractedData } from "./HtmlSummary.js";
 import { parseJson } from "./HttpClient.js";
 import { IServSession } from "./IServSession.js";
 import { redactValue } from "./Redaction.js";
@@ -33,6 +34,41 @@ export interface ReadRouteResult {
   status: number;
   durationMs: number;
   data: unknown;
+  _summary?: string;
+}
+
+function buildHtmlSummary(extracted: HtmlExtractedData): string {
+  const parts: string[] = [];
+  if (extracted.title) parts.push(`Page: ${extracted.title}`);
+  if (extracted.sections.length > 0) {
+    const headings = extracted.sections.map((s) => s.heading);
+    parts.push(`Sections: ${headings.join(", ")}`);
+  }
+  if (extracted.keyValues && Object.keys(extracted.keyValues).length > 0) {
+    const kvs = Object.entries(extracted.keyValues)
+      .slice(0, 5)
+      .map(([k, v]) => `${k}=${v.length > 40 ? v.slice(0, 40) + "..." : v}`);
+    parts.push(`Fields: ${kvs.join(", ")}`);
+  }
+  for (const table of extracted.tables) {
+    parts.push(
+      `Table${table.caption ? ` "${table.caption}"` : ""}: ${table.rows.length} rows`,
+    );
+  }
+  if (extracted.links.length > 0) parts.push(`${extracted.links.length} links`);
+  return parts.join(" | ");
+}
+
+function buildJsonSummary(parsed: unknown): string | undefined {
+  if (Array.isArray(parsed)) {
+    return `${parsed.length} items`;
+  }
+  if (parsed && typeof parsed === "object") {
+    const keys = Object.keys(parsed as Record<string, unknown>);
+    if (keys.length <= 10) return undefined; // show directly
+    return `${keys.length} fields`;
+  }
+  return undefined;
 }
 
 export class IServAPI {
@@ -146,20 +182,27 @@ export class IServAPI {
       ? response.headers["content-type"][0]
       : response.headers["content-type"];
     let data: unknown;
+    let summary: string | undefined;
     if (isHtmlResponse(response.data, contentType)) {
-      data = summarizeHtml(response.data);
+      const extracted = summarizeHtml(response.data);
+      data = extracted;
+      summary = buildHtmlSummary(extracted);
     } else {
       try {
-        data = parseJson(response.data, routeId);
+        const parsed = parseJson(response.data, routeId);
+        data = parsed;
+        summary = buildJsonSummary(parsed);
       } catch {
         data = "[redacted-non-json-response]";
       }
     }
+    const redacted = redactValue(data);
     return {
       routeId,
       status: response.status,
       durationMs: Math.round(performance.now() - startedAt),
-      data: redactValue(data),
+      data: redacted,
+      _summary: summary,
     };
   }
 

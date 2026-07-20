@@ -21,7 +21,12 @@ export {
 } from "./Capabilities/CapabilityService.js";
 export { IServApiError, IServAuthError } from "./Core/Errors.js";
 export {
-  type HtmlStructureSummary,
+  type HtmlExtractedData,
+  type HtmlTable,
+  type HtmlList,
+  type HtmlSection,
+  type HtmlLink,
+  type HtmlForm,
   isHtmlResponse,
   summarizeHtml,
 } from "./Core/HtmlSummary.js";

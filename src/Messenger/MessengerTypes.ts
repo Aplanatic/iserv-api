@@ -46,6 +46,16 @@ export interface UserProfile {
   avatarUrl: string | null;
 }
 
+export interface MessengerContact {
+  userId: string;
+  /** Short Matrix localpart for display, e.g. @9353e7ee… */
+  shortId: string;
+  name: string;
+  roomId: string | null;
+  note?: string;
+  lastActiveAt?: number;
+}
+
 export interface CreateDirectMessageResult {
   roomId: string;
 }

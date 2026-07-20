@@ -62,6 +62,7 @@ export type {
   MessageEvent,
   MessageListener,
   MessagesResult,
+  MessengerContact,
   Room,
   RoomLastMessage,
   SendMessageResult,

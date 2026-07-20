@@ -20,6 +20,7 @@ import type {
   MessageEvent,
   MessageListener,
   MessagesResult,
+  MessengerContact,
   Room,
   SendMessageResult,
   UserProfile,
@@ -28,6 +29,46 @@ import type {
 const SYNC_FILTER = JSON.stringify({
   room: { timeline: { limit: 1 } },
 });
+
+function shortMxid(userId: string): string {
+  const match = userId.match(/^@([^:]+)/);
+  const local = match?.[1] ?? userId.replace(/^@/, "");
+  if (local.length <= 8) return `@${local}`;
+  return `@${local.slice(0, 8)}…`;
+}
+
+function activityNote(messages: Message[], selfId: string | null): string | undefined {
+  const fromOther = messages.filter((message) => message.sender !== selfId);
+  if (fromOther.length === 0) return undefined;
+
+  const media = fromOther.filter(
+    (message) =>
+      message.msgtype === "m.video" ||
+      message.msgtype === "m.file" ||
+      message.msgtype === "m.image" ||
+      /\.(mp4|mov|webm|mkv|avi)(\b|$)/i.test(message.body),
+  );
+  const videos = media.filter(
+    (message) =>
+      message.msgtype === "m.video" ||
+      /video|\.(mp4|mov|webm|mkv|avi)(\b|$)/i.test(message.body),
+  );
+  if (videos.length > 0) {
+    const year = new Date(videos[0]!.timestamp).getFullYear();
+    if (!Number.isFinite(year) || year < 2000) return undefined;
+    return videos.length === 1
+      ? `hat dir ${year} ein Video geschickt`
+      : `hat dir ${year} Videos geschickt`;
+  }
+  if (media.length > 0) {
+    const year = new Date(media[0]!.timestamp).getFullYear();
+    if (!Number.isFinite(year) || year < 2000) return undefined;
+    return media.length === 1
+      ? `hat dir ${year} eine Datei geschickt`
+      : `hat dir ${year} Dateien geschickt`;
+  }
+  return undefined;
+}
 
 const LISTEN_FILTER = JSON.stringify({
   room: { timeline: { types: ["m.room.message"] } },
@@ -141,6 +182,14 @@ export class MessengerService {
     });
 
     // Resolve DM display names when sync state omitted member events (name === room id)
+    const directUserByRoom = new Map<string, string>();
+    for (const event of sync.account_data?.events ?? []) {
+      if (event.type !== "m.direct") continue;
+      for (const [userId, roomIds] of Object.entries(event.content as Record<string, string[]>)) {
+        for (const roomId of roomIds ?? []) directUserByRoom.set(roomId, userId);
+      }
+    }
+
     await Promise.all(
       rooms.map(async (room) => {
         if (room.name !== room.id && !room.name.startsWith("!")) return;
@@ -152,7 +201,18 @@ export class MessengerService {
               member.membership === "join" &&
               member.displayName,
           );
-          if (other?.displayName) room.name = other.displayName;
+          if (other?.displayName) {
+            room.name = other.displayName;
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+        const userId = directUserByRoom.get(room.id);
+        if (!userId) return;
+        try {
+          const profile = await this.getProfile(userId);
+          if (profile.displayName) room.name = profile.displayName;
         } catch {
           /* keep matrix id */
         }
@@ -160,6 +220,78 @@ export class MessengerService {
     );
 
     return rooms;
+  }
+
+  /**
+   * Resolve Matrix DM contacts from m.direct → real display names (+ activity notes).
+   */
+  async getContacts(): Promise<MessengerContact[]> {
+    const res = await this.session.http.get(`${this.session.matrixBaseUrl()}/sync`, {
+      params: { filter: SYNC_FILTER, timeout: 0 },
+      headers: this.authHeader(),
+    });
+    const sync = parseJson<MatrixSyncResponse>(res.data, "sync");
+    const selfId = this.session.matrixUserId;
+    const joined = new Set(Object.keys(sync.rooms?.join ?? {}));
+
+    const direct = new Map<string, string[]>();
+    for (const event of sync.account_data?.events ?? []) {
+      if (event.type !== "m.direct") continue;
+      for (const [userId, roomIds] of Object.entries(
+        event.content as Record<string, string[]>,
+      )) {
+        direct.set(userId, Array.isArray(roomIds) ? roomIds : []);
+      }
+    }
+
+    const contacts = await Promise.all(
+      [...direct.entries()].map(async ([userId, roomIds]) => {
+        let name = "???";
+        try {
+          const profile = await this.getProfile(userId);
+          if (profile.displayName?.trim()) name = profile.displayName.trim();
+        } catch {
+          /* keep ??? */
+        }
+
+        const roomId =
+          roomIds.find((id) => joined.has(id)) ?? roomIds.find(Boolean) ?? null;
+
+        let note: string | undefined;
+        let lastActiveAt: number | undefined;
+        if (roomId && joined.has(roomId)) {
+          try {
+            const { messages } = await this.getMessages(roomId, { limit: 30 });
+            note = activityNote(messages, selfId);
+            lastActiveAt = messages[0]?.timestamp;
+          } catch {
+            /* no note */
+          }
+        }
+
+        return {
+          userId,
+          shortId: shortMxid(userId),
+          name,
+          roomId,
+          ...(note ? { note } : {}),
+          ...(lastActiveAt ? { lastActiveAt } : {}),
+        } satisfies MessengerContact;
+      }),
+    );
+
+    contacts.sort((a, b) => {
+      const aActive = a.roomId && a.lastActiveAt ? 1 : a.roomId ? 0 : -1;
+      const bActive = b.roomId && b.lastActiveAt ? 1 : b.roomId ? 0 : -1;
+      if (aActive !== bActive) return bActive - aActive;
+      if ((b.lastActiveAt ?? 0) !== (a.lastActiveAt ?? 0)) {
+        return (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0);
+      }
+      return a.name.localeCompare(b.name, "de");
+    });
+
+    log.info(`Got ${contacts.length} messenger contacts`);
+    return contacts;
   }
 
   async getMessages(

@@ -85,6 +85,32 @@ function presentEmailList(value: Record<string, unknown>): unknown {
   };
 }
 
+function presentContacts(value: unknown[]): unknown {
+  if (value.length === 0) {
+    return {
+      title: "Messenger contacts",
+      empty: true,
+      message: "No direct-message contacts.",
+      items: [],
+    };
+  }
+  return {
+    title: "Messenger contacts",
+    items: value.map((entry) => {
+      if (!isRecord(entry)) return { value: String(entry) };
+      const name = cleanText(String(entry.name ?? "???"));
+      const shortId = cleanText(String(entry.shortId ?? entry.userId ?? "—"));
+      const note =
+        typeof entry.note === "string" && entry.note.trim()
+          ? cleanText(entry.note)
+          : undefined;
+      return {
+        contact: note ? `${name} (${shortId}) – ${note}` : `${name} (${shortId})`,
+      };
+    }),
+  };
+}
+
 function presentRooms(value: unknown[]): unknown {
   if (value.length === 0) {
     return { title: "Rooms", empty: true, message: "No joined rooms.", items: [] };
@@ -322,6 +348,15 @@ export function presentForDisplay(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (Array.isArray(value)) {
     if (value.length === 0) return value;
+    // Messenger contacts (m.direct resolved)
+    if (
+      isRecord(value[0]) &&
+      "userId" in value[0] &&
+      "shortId" in value[0] &&
+      "name" in value[0]
+    ) {
+      return presentContacts(value);
+    }
     // Messenger rooms
     if (isRecord(value[0]) && "unreadCount" in value[0] && "isDirect" in value[0]) {
       return presentRooms(value);

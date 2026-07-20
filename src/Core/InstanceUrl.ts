@@ -1,14 +1,42 @@
+import { isIP } from "node:net";
+
 export interface NormalizedInstance {
   origin: string;
   hostname: string;
 }
 
 function isPrivateHostname(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "::1" || hostname.endsWith(".local")) return true;
-  if (/^127\./.test(hostname) || /^10\./.test(hostname) || /^192\.168\./.test(hostname))
+  const address = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (address === "localhost" || address.endsWith(".localhost") || address.endsWith(".local")) {
     return true;
-  const match = hostname.match(/^172\.(\d+)\./);
-  return match ? Number(match[1]) >= 16 && Number(match[1]) <= 31 : false;
+  }
+  if (isIP(address) === 4) {
+    const [first = 0, second = 0] = address.split(".").map(Number);
+    return (
+      first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      (first === 100 && second >= 64 && second <= 127) ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && (second === 0 || second === 168)) ||
+      (first === 198 && (second === 18 || second === 19)) ||
+      first >= 224
+    );
+  }
+  if (isIP(address) === 6) {
+    const first = Number.parseInt(address.split(":", 1)[0] ?? "0", 16);
+    return (
+      address === "::" ||
+      address === "::1" ||
+      address.startsWith("::ffff:") ||
+      (first & 0xfe00) === 0xfc00 ||
+      (first & 0xffc0) === 0xfe80 ||
+      (first & 0xff00) === 0xff00 ||
+      address.startsWith("2001:db8:")
+    );
+  }
+  return false;
 }
 
 export function normalizeInstanceUrl(

@@ -16,6 +16,12 @@ const log = createLogger("User");
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
+function assertUsername(username: string): void {
+  if (!USERNAME_PATTERN.test(username) || username === "." || username === "..") {
+    throw new IServApiError("Invalid username format", 400);
+  }
+}
+
 function readInput($: cheerio.CheerioAPI, id: string): string {
   return ($(`#${id}`).val() as string | undefined) ?? "";
 }
@@ -159,9 +165,7 @@ export class UserService {
   }
 
   async getInfo(username: string): Promise<Record<string, string>> {
-    if (!USERNAME_PATTERN.test(username)) {
-      throw new IServApiError("Invalid username format", 400);
-    }
+    assertUsername(username);
     const res = await this.session.http.get(
       `${this.session.baseUrl()}/iserv/addressbook/public/show/${username}`,
     );
@@ -177,7 +181,7 @@ export class UserService {
       if (key) data[key] = value;
     });
 
-    log.info(`Got info for user ${username}`);
+    log.info("Got public user info");
     return data;
   }
 
@@ -229,6 +233,7 @@ export class UserService {
     width?: number,
     height?: number,
   ): Promise<Buffer> {
+    assertUsername(username);
     if (!USERNAME_PATTERN.test(username)) {
       throw new IServApiError("Invalid username format", 400);
     }
@@ -253,7 +258,7 @@ export class UserService {
       throw new IServApiError("SVG profile pictures are not supported", 422);
     }
 
-    log.info(`Got profile picture buffer for ${username}`);
+    log.info("Got profile picture buffer");
     return buffer;
   }
 
@@ -267,11 +272,12 @@ export class UserService {
     const ext = imageExtension(buffer);
 
     const filePath = path.join(resolvedFolder, `${username}.${ext}`);
-    if (!filePath.startsWith(resolvedFolder)) {
+    const relative = path.relative(resolvedFolder, filePath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new IServApiError("Path traversal detected", 400);
     }
 
     await fs.writeFile(filePath, buffer);
-    log.info(`Saved profile picture for ${username} to ${filePath}`);
+    log.info("Saved profile picture");
   }
 }

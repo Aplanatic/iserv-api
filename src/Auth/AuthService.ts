@@ -1,5 +1,6 @@
 import { IServAuthError } from "../Core/Errors.js";
 import { parseJson } from "../Core/HttpClient.js";
+import { assertSameOrigin } from "../Core/InstanceUrl.js";
 import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
 
@@ -116,7 +117,9 @@ export class AuthService {
   private async fetchText(
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {},
+    redirectsRemaining = 5,
   ): Promise<TextHttpResponse> {
+    assertSameOrigin(this.session.baseUrl(), url);
     const cookieJar = (this.session as IServSession & { cookieJar?: IServSession["cookieJar"] })
       .cookieJar;
     if (!cookieJar) {
@@ -155,7 +158,10 @@ export class AuthService {
 
     const location = res.headers.get("location");
     if (location && res.status >= 300 && res.status < 400) {
-      return this.fetchText(new URL(location, url).href);
+      if (redirectsRemaining <= 0) {
+        throw new IServAuthError("Authentication redirect limit exceeded");
+      }
+      return this.fetchText(new URL(location, url).href, {}, redirectsRemaining - 1);
     }
 
     return {
@@ -173,6 +179,7 @@ export class AuthService {
       const redirectUrl = resolveHtmlRedirect(current.data as string, current.url);
       if (!redirectUrl) return current;
 
+      assertSameOrigin(this.session.baseUrl(), redirectUrl);
       const next = await this.session.http.get(redirectUrl);
       current = { ...next, data: next.data as string };
     }

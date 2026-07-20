@@ -174,7 +174,7 @@ export class MessengerService {
         encrypted: e.type === "m.room.encrypted",
       }));
 
-    log.debug(`Got ${messages.length} messages for ${roomId}`);
+    log.debug(`Got ${messages.length} messages`);
     return { messages, start: data.start, end: data.end };
   }
 
@@ -194,7 +194,7 @@ export class MessengerService {
 
     const data = parseJson<{ event_id: string }>(res.data, "sendMessage");
 
-    log.debug(`Sent message to ${roomId}, event_id: ${data.event_id}`);
+    log.debug("Sent message");
     return { eventId: data.event_id };
   }
 
@@ -214,7 +214,7 @@ export class MessengerService {
       },
     );
 
-    log.debug(`Left room ${roomId}`);
+    log.debug("Left room");
   }
 
   async reactToMessage(
@@ -236,7 +236,7 @@ export class MessengerService {
 
     const data = parseJson<{ event_id: string }>(res.data, "reactToMessage");
 
-    log.debug(`Reacted to ${eventId} in ${roomId} with ${emoji}, event_id: ${data.event_id}`);
+    log.debug("Reacted to message");
     return { eventId: data.event_id };
   }
 
@@ -281,7 +281,7 @@ export class MessengerService {
 
     const data = parseJson<{ room_id: string }>(res.data, "createDirectMessage");
     if (!data.room_id) throw new Error("createDirectMessage: response did not include room_id");
-    log.debug(`Created direct message room with ${matrixId}: ${data.room_id}`);
+    log.debug("Created direct message room");
     return { roomId: data.room_id };
   }
 
@@ -306,7 +306,7 @@ export class MessengerService {
     );
 
     const data = parseJson<{ event_id: string }>(res.data, "editMessage");
-    log.debug(`Edited message ${eventId} in ${roomId}, event_id: ${data.event_id}`);
+    log.debug("Edited message");
     return { eventId: data.event_id };
   }
 
@@ -341,7 +341,7 @@ export class MessengerService {
     );
 
     const data = parseJson<{ event_id: string }>(res.data, "replyToMessage");
-    log.debug(`Replied to ${replyTo.eventId} in ${roomId}, event_id: ${data.event_id}`);
+    log.debug("Replied to message");
     return { eventId: data.event_id };
   }
 
@@ -383,7 +383,7 @@ export class MessengerService {
       `Reaction "${reactionEventId}" not found — it may have already been removed`,
       `Not authorized to remove reaction "${reactionEventId}"`,
     );
-    log.debug(`Removed reaction ${reactionEventId} in ${roomId}, event_id: ${result.eventId}`);
+    log.debug("Removed reaction");
     return result;
   }
 
@@ -399,7 +399,7 @@ export class MessengerService {
       `Message "${eventId}" not found, it may have already been deleted`,
       `Not authorized to delete message "${eventId}"`,
     );
-    log.debug(`Deleted message ${eventId} in ${roomId}, event_id: ${result.eventId}`);
+    log.debug("Deleted message");
     return result;
   }
 
@@ -452,7 +452,7 @@ export class MessengerService {
 
     const data = parseJson<MatrixMembersResponse>(res.data, "members");
 
-    log.debug(`Got ${data.chunk.length} members for ${roomId}`);
+    log.debug(`Got ${data.chunk.length} members`);
     return data.chunk.map((e: MatrixMemberEvent) => ({
       userId: e.state_key,
       displayName: e.content.displayname ?? null,
@@ -489,7 +489,7 @@ export class MessengerService {
 
     const data = parseJson<MatrixProfileResponse>(res.data, "profile");
 
-    log.debug(`Got profile for ${userId}`);
+    log.debug("Got messenger profile");
     return {
       userId,
       displayName: data.displayname ?? null,
@@ -566,7 +566,7 @@ export class MessengerService {
                 const err =
                   callbackErr instanceof Error ? callbackErr : new Error(String(callbackErr));
                 if (onError) onError(err);
-                else log.error(`listenForMessages callback error: ${err.message}`);
+                else log.error("listenForMessages callback failed");
               }
             }
           }
@@ -574,7 +574,7 @@ export class MessengerService {
           if (stopped) break;
           const err = error instanceof Error ? error : new Error(String(error));
           if (onError) onError(err);
-          else log.error(`listenForMessages sync error: ${err.message}`);
+          else log.error("listenForMessages sync failed");
         }
       }
     };
@@ -583,7 +583,7 @@ export class MessengerService {
       loop().catch((err) => {
         const e = err instanceof Error ? err : new Error(String(err));
         if (onError) onError(e);
-        else log.error(`listenForMessages fatal: ${e.message}`);
+        else log.error("listenForMessages failed");
       });
     });
 

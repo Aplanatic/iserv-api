@@ -321,7 +321,7 @@ export class CalendarService {
         },
       },
     );
-    log.debug(`Searched events: "${query}" from ${start} to ${end}`);
+    log.debug(`Searched events from ${start} to ${end}`);
     return parseJson<CalendarEventSearchResult[]>(res.data, "calendar event search");
   }
 

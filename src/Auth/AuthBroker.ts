@@ -38,6 +38,15 @@ export class AuthBroker {
     readonly credentials: CredentialStore = new NativeCredentialStore(),
   ) {}
 
+  private async restoreStored(name: string, encoded: string): Promise<IServAPI> {
+    const stored = JSON.parse(encoded) as StoredSession;
+    const client = IServAPI.restore(stored);
+    if (stored.password !== undefined) {
+      await this.credentials.set(name, JSON.stringify(client.exportSession()));
+    }
+    return client;
+  }
+
   async login(options: LoginOptions): Promise<IServAPI> {
     const instance = normalizeInstanceUrl(
       options.url,
@@ -49,10 +58,7 @@ export class AuthBroker {
       options.password,
       options.challengeHandler ? { challengeHandler: options.challengeHandler } : {},
     );
-    await this.credentials.set(
-      options.profile,
-      JSON.stringify(client.exportSession({ includePassword: true })),
-    );
+    await this.credentials.set(options.profile, JSON.stringify(client.exportSession()));
     await this.profiles.upsert({
       name: options.profile,
       hostname: instance.hostname,
@@ -67,8 +73,7 @@ export class AuthBroker {
     if (!name) throw new Error("No active IServ profile; run the login command first");
     const encoded = await this.credentials.get(name);
     if (!encoded) throw new Error(`No native-keychain session exists for profile: ${name}`);
-    const stored = JSON.parse(encoded) as StoredSession;
-    return IServAPI.restore(stored);
+    return this.restoreStored(name, encoded);
   }
 
   async restoreMessenger(profile?: string): Promise<IServAPI> {
@@ -77,10 +82,7 @@ export class AuthBroker {
     if (!name) throw new Error("No active IServ profile; run the login command first");
     const client = await this.restore(name);
     await client.ensureMessengerSession();
-    await this.credentials.set(
-      name,
-      JSON.stringify(client.exportSession({ includePassword: true })),
-    );
+    await this.credentials.set(name, JSON.stringify(client.exportSession()));
     return client;
   }
 
@@ -106,7 +108,7 @@ export class AuthBroker {
     if (!encoded)
       return { profile: name, configured, authenticated: false, ...(account ? { account } : {}) };
     try {
-      const client = IServAPI.restore(JSON.parse(encoded) as StoredSession);
+      const client = await this.restoreStored(name, encoded);
       const [infoResult, capabilitiesResult] = await Promise.allSettled([
         client.users.getOwnInfo(),
         client.capabilities.list(),

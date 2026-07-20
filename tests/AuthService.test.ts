@@ -259,6 +259,34 @@ describe("AuthService.login", () => {
     });
   });
 
+  test("blocks a cross-origin HTML handoff before contacting it", async () => {
+    const calls: HttpCall[] = [];
+    const session = createSession(
+      {
+        get: [
+          {
+            data: "<form></form>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/login",
+          },
+        ],
+        post: [
+          {
+            data: '<meta http-equiv="refresh" content="0;url=https://example.invalid/capture">',
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/auth",
+          },
+        ],
+      },
+      calls,
+    );
+
+    await expect(new AuthService(session).login()).rejects.toThrow("Cross-origin");
+    expect(calls).toHaveLength(2);
+  });
+
   test("keeps the IServ error messages for invalid credentials", async () => {
     const session = createSession({
       get: [

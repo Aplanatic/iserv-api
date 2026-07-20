@@ -81,6 +81,16 @@ describe("UserService.getOwnInfo", () => {
 });
 
 describe("UserService.getProfilePictureBuffer validation", () => {
+  test.each(["../alice", "alice/bob", ".", "..", "alice?size=1"])(
+    "rejects unsafe username %s before making a request",
+    async (username) => {
+      const { session } = createMockIServSession({ routes: [] });
+      await expect(new UserService(session).getProfilePictureBuffer(username)).rejects.toThrow(
+        "Invalid username format",
+      );
+    },
+  );
+
   test("throws when width is 0", async () => {
     const { session } = createMockIServSession({ routes: [] });
     await expect(new UserService(session).getProfilePictureBuffer("alice", 0)).rejects.toThrow(

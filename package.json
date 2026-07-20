@@ -1,6 +1,6 @@
 {
   "name": "@aplanatic/iserv-api",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Unofficial typed SDK, route catalog, and local explorer for IServ school servers",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -64,7 +64,10 @@
     "api",
     "sdk"
   ],
-  "author": "yonn2222",
+  "author": "Aplanatic",
+  "contributors": [
+    "YONN2222 and IservAPI contributors"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Aplanatic/iserv-api.git"

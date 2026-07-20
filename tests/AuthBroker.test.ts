@@ -66,3 +66,35 @@ describe("AuthBroker status", () => {
     });
   });
 });
+
+describe("AuthBroker credential minimization", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test("removes legacy persisted passwords when a session is restored", async () => {
+    const writes: string[] = [];
+    const legacyCredentials = {
+      get: async () =>
+        JSON.stringify({
+          hostname: "iserv.example",
+          username: "alice",
+          password: "test-password",
+          cookies: {
+            version: "tough-cookie@6.0.0",
+            storeType: "MemoryCookieStore",
+            rejectPublicSuffixes: true,
+            enableLooseMode: false,
+            allowSpecialUseDomain: true,
+            prefixSecurity: "silent",
+            cookies: [],
+          },
+        }),
+      set: async (_profile: string, value: string) => writes.push(value),
+      delete: async () => undefined,
+    } satisfies CredentialStore;
+
+    await new AuthBroker(profiles, legacyCredentials).restore();
+
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0] ?? "{}")).not.toHaveProperty("password");
+  });
+});

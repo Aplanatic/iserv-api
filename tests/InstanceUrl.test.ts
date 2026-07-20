@@ -17,7 +17,15 @@ describe("normalizeInstanceUrl", () => {
     "https://iserv.example?token=value",
     "https://iserv.example:8443",
     "localhost",
+    "service.localhost",
     "192.168.1.2",
+    "169.254.1.2",
+    "100.64.1.2",
+    "0.0.0.0",
+    "https://[::1]",
+    "https://[fc00::1]",
+    "https://[fe80::1]",
+    "https://[::ffff:127.0.0.1]",
   ])("rejects unsafe input %s", (input) => {
     expect(() => normalizeInstanceUrl(input)).toThrow();
   });

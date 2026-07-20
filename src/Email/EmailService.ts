@@ -169,6 +169,6 @@ export class EmailService {
       transporter.close();
       destroyOpenSmtpSockets(transporter);
     }
-    log.info(`Email sent to ${to.replace(/[\r\n\t<>]/g, "")}`);
+    log.info("Email sent");
   }
 }

@@ -26,6 +26,23 @@ describe("ProfileStore", () => {
 
     await store.remove("school");
     expect((await store.read()).activeProfile).toBe("second");
+    expect(await readFile(`${store.path}.bak`, "utf8")).toContain("school");
+  });
+
+  test("serializes concurrent writers with a lockfile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "iserv-profiles-"));
+    directories.push(directory);
+    const store = new ProfileStore(directory);
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        store.upsert({
+          name: `p${index}`,
+          hostname: "iserv.example",
+          username: `user${index}`,
+        }),
+      ),
+    );
+    expect((await store.read()).profiles).toHaveLength(8);
   });
 
   test("rejects unknown active profiles", async () => {

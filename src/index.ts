@@ -13,7 +13,7 @@ export {
   type CredentialStore,
   NativeCredentialStore,
 } from "./Auth/CredentialStore.js";
-export { type ProfileMetadata, ProfileStore } from "./Auth/ProfileStore.js";
+export { type ProfileMetadata, ProfileStore, resolveConfigDirectory } from "./Auth/ProfileStore.js";
 export {
   CapabilityService,
   type ModuleAccess,

@@ -99,8 +99,10 @@ export class EmailService {
       items.length < limit && resolvedTotal > items.length
         ? `Requested ${limit} messages but only ${items.length} were returned by the server.`
         : items.length === limit && resolvedTotal > limit
-          ? `Returning ${items.length} of ${resolvedTotal} messages (limit=${limit}).`
-          : undefined;
+          ? `Returning ${items.length} of ${resolvedTotal} messages (limit=${limit}). Use --offset to page.`
+          : limit > 200
+            ? `Fetched in ~200-message server pages (requested limit=${limit}).`
+            : undefined;
     return {
       items,
       offset,
@@ -163,6 +165,7 @@ export class EmailService {
       smtpServer,
       smtpsPort = 465,
       attachments = [],
+      idempotencyKey,
     } = options;
 
     const normalizeAddrs = (value: string | string[] | undefined): string[] => {
@@ -223,6 +226,10 @@ export class EmailService {
     });
 
     try {
+      const key = idempotencyKey?.trim();
+      const messageId = key
+        ? `<${key.replace(/[^a-zA-Z0-9._-]/g, "")}@iserv-cli.local>`
+        : undefined;
       await transporter.sendMail({
         from: `${this.session.username}@${this.session.url}`,
         to: toList.join(", "),
@@ -231,6 +238,12 @@ export class EmailService {
         subject,
         text: body,
         html: htmlBody,
+        ...(messageId && key
+          ? {
+              messageId,
+              headers: { "X-Idempotency-Key": key },
+            }
+          : {}),
         attachments: attachments.map((filePath) => ({
           path: filePath,
           filename: path.basename(filePath),

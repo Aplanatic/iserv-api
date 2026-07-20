@@ -99,4 +99,6 @@ export interface SendEmailOptions {
   smtpServer?: string;
   smtpsPort?: number;
   attachments?: string[];
+  /** Stable id for retries — set as Message-ID / X-Idempotency-Key. */
+  idempotencyKey?: string;
 }

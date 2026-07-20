@@ -37,23 +37,31 @@ function sendJson(response: ServerResponse, status: number, data: unknown): void
 export async function startExplorerServer(options: {
   client?: IServAPI;
   assetsDirectory: string;
+  /** Bind port (default: ephemeral). Always listens on 127.0.0.1 only. */
   port?: number;
+  /** Bind address (default: 127.0.0.1). Non-loopback requires allowRemote. */
+  host?: string;
+  allowRemote?: boolean;
 }): Promise<{ url: string; token: string; close: () => Promise<void> }> {
   const token = randomBytes(32).toString("base64url");
   const assetsRoot = resolve(options.assetsDirectory);
+  const host = options.host ?? "127.0.0.1";
+  if (!options.allowRemote && host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    throw new Error("Explorer binds to loopback only unless allowRemote is set");
+  }
   const server = createServer(async (request, response) => {
     try {
-      const host = request.headers.host ?? "";
-      if (!/^(?:127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(host)) {
+      const requestHost = request.headers.host ?? "";
+      if (!/^(?:127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(requestHost) && !options.allowRemote) {
         return sendJson(response, 403, { error: "Invalid Host header" });
       }
-      const requestUrl = new URL(request.url ?? "/", `http://${host}`);
+      const requestUrl = new URL(request.url ?? "/", `http://${requestHost || `${host}:0`}`);
       if (requestUrl.pathname.startsWith("/api/")) {
         if (request.headers.authorization !== `Bearer ${token}`) {
           return sendJson(response, 401, { error: "Invalid explorer token" });
         }
         const origin = request.headers.origin;
-        if (origin && origin !== `http://${host}`) {
+        if (origin && requestHost && origin !== `http://${requestHost}`) {
           return sendJson(response, 403, { error: "Invalid Origin header" });
         }
         if (requestUrl.pathname === "/api/catalog" && request.method === "GET") {
@@ -106,12 +114,13 @@ export async function startExplorerServer(options: {
   });
   await new Promise<void>((resolveListen, reject) => {
     server.once("error", reject);
-    server.listen(options.port ?? 0, "127.0.0.1", resolveListen);
+    server.listen(options.port ?? 0, host, resolveListen);
   });
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Explorer server failed to bind");
+  const displayHost = host === "127.0.0.1" || host === "localhost" ? "127.0.0.1" : host;
   return {
-    url: `http://127.0.0.1:${address.port}/?token=${encodeURIComponent(token)}`,
+    url: `http://${displayHost}:${address.port}/?token=${encodeURIComponent(token)}`,
     token,
     close: () =>
       new Promise<void>((resolveClose, reject) =>

@@ -39,14 +39,36 @@ function isPrivateHostname(hostname: string): boolean {
   return false;
 }
 
+function isPlausibleHostname(hostname: string, allowPrivateHost: boolean): boolean {
+  if (!hostname || hostname.includes("..") || hostname.includes("/") || hostname.includes("\\")) {
+    return false;
+  }
+  const address = hostname.replace(/^\[|\]$/g, "");
+  if (isIP(address) !== 0) return true;
+  // Public instances must look like a DNS name with a TLD (e.g. school.example).
+  if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(hostname)) {
+    return true;
+  }
+  // Single-label hosts only when private hosts are explicitly allowed (LAN).
+  return allowPrivateHost && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(hostname);
+}
+
 export function normalizeInstanceUrl(
   input: string,
   options: { allowPrivateHost?: boolean } = {},
 ): NormalizedInstance {
   const raw = input.trim();
   if (!raw) throw new Error("IServ instance URL is required");
+  if (/[\\/]/.test(raw.replace(/^https?:\/\//i, "").split("/")[0] ?? "")) {
+    throw new Error("Invalid IServ hostname");
+  }
   const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
-  const url = new URL(candidate);
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new Error("Invalid IServ instance URL");
+  }
   if (url.protocol !== "https:") throw new Error("IServ instances must use HTTPS");
   if (url.username || url.password) throw new Error("Credentials must not be embedded in the URL");
   if (url.search || url.hash) throw new Error("Instance URLs must not contain a query or fragment");
@@ -56,6 +78,9 @@ export function normalizeInstanceUrl(
     throw new Error("Instance URL path must be / or /iserv");
   }
   const hostname = url.hostname.toLowerCase();
+  if (!isPlausibleHostname(hostname, Boolean(options.allowPrivateHost))) {
+    throw new Error("Invalid IServ hostname");
+  }
   if (!options.allowPrivateHost && isPrivateHostname(hostname)) {
     throw new Error("Private network instances require allowPrivateHost");
   }

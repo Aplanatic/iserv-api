@@ -26,6 +26,11 @@ describe("normalizeInstanceUrl", () => {
     "https://[fc00::1]",
     "https://[fe80::1]",
     "https://[::ffff:127.0.0.1]",
+    "../../../etc",
+    "..",
+    "etc",
+    "/etc",
+    "https://evil.example/../../x",
   ])("rejects unsafe input %s", (input) => {
     expect(() => normalizeInstanceUrl(input)).toThrow();
   });

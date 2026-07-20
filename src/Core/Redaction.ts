@@ -1,6 +1,8 @@
 const SECRET_KEY = /authorization|cookie|password|passwd|secret|token|session|keychain|credential/i;
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const HOST = /\b(?:[a-z0-9-]+\.)+(?:de|com|org|net|edu|eu|app|dev|school|cloud|info)\b/gi;
+const LOCAL_PATH =
+  /(?:file:\/\/)?(?:\/Users\/[^/\s:'"]+|\/home\/[^/\s:'"]+|\/tmp\/[^/\s:'"]+|[A-Za-z]:\\Users\\[^\\\s:'"]+)[^\s:'"]*/gi;
 const ROUTE_ID = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9_]*$/;
 
 // Keys that are safe to keep (internal metadata, structural fields)
@@ -8,10 +10,13 @@ const SAFE_KEY =
   /^(kind|routeId|status|durationMs|_summary|_csrf_present|_nav_items|_active_nav|_user|bytes|title|caption|heading|headers|action|method|fields|level|text|href|label|items|content|module|sideEffect|authentication|capability|summary|description|path|provenance|reference|lastVerified|compatibility|name|username|displayName|access|catalogued|verifiedReadRoutes)$/i;
 
 export function redactText(value: string): string {
-  return value.replace(EMAIL, "[redacted-email]").replace(HOST, (host) => {
-    if (host === "iserv.example" || host.includes(".invalid")) return host;
-    return "[redacted-host]";
-  });
+  return value
+    .replace(EMAIL, "[redacted-email]")
+    .replace(LOCAL_PATH, "[redacted-path]")
+    .replace(HOST, (host) => {
+      if (host === "iserv.example" || host.includes(".invalid")) return host;
+      return "[redacted-host]";
+    });
 }
 
 export function redactValue(value: unknown, depth = 0, opts?: { maxArrayItems?: number }): unknown {

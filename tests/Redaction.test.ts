@@ -8,6 +8,12 @@ describe("redaction", () => {
     );
   });
 
+  test("redacts local filesystem paths from stacks", () => {
+    expect(
+      redactText("at fail (/Users/devin/development/iserv-cli/dist/main.mjs:10:1)"),
+    ).toBe("at fail ([redacted-path]:10:1)");
+  });
+
   test("does not redact route IDs or TypeScript filenames", () => {
     expect(redactText("account.get src/User/UserService.ts")).toBe(
       "account.get src/User/UserService.ts",

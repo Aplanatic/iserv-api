@@ -153,10 +153,37 @@ export class EmailService {
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
     const { default: nodemailer } = await import("nodemailer");
-    const { to, subject, body, htmlBody, smtpServer, smtpsPort = 465, attachments = [] } = options;
+    const {
+      to,
+      cc,
+      bcc,
+      subject,
+      body,
+      htmlBody,
+      smtpServer,
+      smtpsPort = 465,
+      attachments = [],
+    } = options;
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-      throw new IServApiError("Invalid email address", 400);
+    const normalizeAddrs = (value: string | string[] | undefined): string[] => {
+      if (value === undefined) return [];
+      const list = (Array.isArray(value) ? value : [value])
+        .flatMap((entry) => entry.split(","))
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      return list;
+    };
+
+    const toList = normalizeAddrs(to);
+    const ccList = normalizeAddrs(cc);
+    const bccList = normalizeAddrs(bcc);
+    if (toList.length === 0) {
+      throw new IServApiError("At least one --to address is required", 400);
+    }
+    for (const address of [...toList, ...ccList, ...bccList]) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+        throw new IServApiError(`Invalid email address: ${address}`, 400);
+      }
     }
 
     const server = smtpServer ?? this.session.url;
@@ -198,7 +225,9 @@ export class EmailService {
     try {
       await transporter.sendMail({
         from: `${this.session.username}@${this.session.url}`,
-        to,
+        to: toList.join(", "),
+        ...(ccList.length > 0 ? { cc: ccList.join(", ") } : {}),
+        ...(bccList.length > 0 ? { bcc: bccList.join(", ") } : {}),
         subject,
         text: body,
         html: htmlBody,

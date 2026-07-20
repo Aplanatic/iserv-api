@@ -216,6 +216,21 @@ export class IServAPI {
         return this.calendar.getUpcomingEvents();
       case "calendar.sources":
         return this.calendar.getEventSources();
+      case "calendar.holidays": {
+        const next =
+          parameters.next === true ||
+          parameters.next === "true" ||
+          parameters.mode === "next";
+        const overview = await this.calendar.getHolidays({
+          nextLimit:
+            typeof parameters.limit === "number"
+              ? parameters.limit
+              : typeof parameters.limit === "string"
+                ? Number(parameters.limit)
+                : undefined,
+        });
+        return { ...overview, mode: next ? "next" : "seasons" };
+      }
       case "notifications.list":
         return this.notifications.getAll();
       case "notifications.badges":

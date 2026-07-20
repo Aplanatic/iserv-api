@@ -13,6 +13,10 @@ import type {
   CalendarEventsByCalendar,
   CreateEventOptions,
   DeleteEventOptions,
+  HolidayKind,
+  HolidayPeriod,
+  HolidaysOverview,
+  HolidayStatus,
   Recurring,
   UpcomingEvents,
 } from "./CalendarTypes.js";
@@ -31,6 +35,99 @@ function parseDate(dateStr: string): Date {
     throw new IServApiError(`Invalid date: "${dateStr}"`, 400);
   }
   return date;
+}
+
+const SEASON_DEFS: Array<{ label: string; match: RegExp }> = [
+  { label: "Osterferien", match: /^osterferien$/i },
+  { label: "Sommerferien", match: /^sommerferien$/i },
+  { label: "Herbstferien", match: /^herbstferien$/i },
+  { label: "Weihnachtsferien", match: /^weihnachtsferien$/i },
+  { label: "Winterferien", match: /^winterferien$/i },
+];
+
+function startOfLocalDay(value: dayjs.Dayjs): dayjs.Dayjs {
+  return value.hour(0).minute(0).second(0).millisecond(0);
+}
+
+function parseEventInstant(value: unknown): dayjs.Dayjs | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed : null;
+}
+
+/** FullCalendar all-day ends are exclusive; convert to inclusive calendar day. */
+function inclusiveEndDate(start: dayjs.Dayjs, end: dayjs.Dayjs, allDay: boolean): dayjs.Dayjs {
+  if (!allDay) return startOfLocalDay(end);
+  const last = startOfLocalDay(end).subtract(1, "day");
+  return last.isBefore(startOfLocalDay(start), "day") ? startOfLocalDay(start) : last;
+}
+
+function formatDayLabel(value: dayjs.Dayjs): string {
+  return value.format("DD.MM.YYYY");
+}
+
+function countdownLabel(status: HolidayStatus, daysUntilStart: number, daysRemaining: number): string {
+  if (status === "ongoing") {
+    if (daysRemaining <= 0) return "letzter Tag";
+    return daysRemaining === 1 ? "noch 1 Tag" : `noch ${daysRemaining} Tage`;
+  }
+  if (status === "upcoming") {
+    if (daysUntilStart <= 0) return "heute";
+    return daysUntilStart === 1 ? "in 1 Tag" : `in ${daysUntilStart} Tagen`;
+  }
+  return "vorbei";
+}
+
+function buildPeriod(
+  name: string,
+  kind: HolidayKind,
+  startRaw: dayjs.Dayjs,
+  endRaw: dayjs.Dayjs,
+  allDay: boolean,
+  today: dayjs.Dayjs,
+  source?: string,
+): HolidayPeriod {
+  const start = startOfLocalDay(startRaw);
+  const end = inclusiveEndDate(startRaw, endRaw, allDay);
+  const todayStart = startOfLocalDay(today);
+  let status: HolidayStatus = "upcoming";
+  if (end.isBefore(todayStart, "day")) status = "past";
+  else if (!start.isAfter(todayStart, "day")) status = "ongoing";
+
+  const daysUntilStart = Math.max(0, start.diff(todayStart, "day"));
+  const daysRemaining = Math.max(0, end.diff(todayStart, "day"));
+  return {
+    name,
+    kind,
+    start: start.format("YYYY-MM-DD"),
+    end: end.format("YYYY-MM-DD"),
+    startLabel: formatDayLabel(start),
+    endLabel: formatDayLabel(end),
+    status,
+    daysUntilStart,
+    daysRemaining,
+    countdown: countdownLabel(status, daysUntilStart, daysRemaining),
+    ...(source ? { source } : {}),
+  };
+}
+
+function pickSeasonOccurrence(
+  candidates: HolidayPeriod[],
+  today: dayjs.Dayjs,
+): HolidayPeriod | undefined {
+  if (candidates.length === 0) return undefined;
+  const ongoing = candidates.find((c) => c.status === "ongoing");
+  if (ongoing) return ongoing;
+  const upcoming = candidates
+    .filter((c) => c.status === "upcoming")
+    .sort((a, b) => a.start.localeCompare(b.start));
+  if (upcoming[0]) return upcoming[0];
+  // Fall back to the latest past occurrence
+  return [...candidates].sort((a, b) => b.start.localeCompare(a.start))[0];
+}
+
+function isMovableFreeTitle(title: string): boolean {
+  return /beweglich|unterrichtsfrei|schulfrei|ferien/i.test(title);
 }
 
 function offsetMinutes(dateStr: string): number {
@@ -341,17 +438,134 @@ export class CalendarService {
       throw new IServApiError("Start date must be on or before end date.", 400);
     }
     const res = await this.session.http.get(
-      `${this.session.baseUrl()}/iserv/calendar/feed/plugin`,
+      `${this.session.baseUrl()}/iserv/calendar4/plugin`,
       {
         params: {
           plugin,
-          start: startDate.toISOString(),
-          end: endDate.toISOString(),
+          start: dayjs(startDate).format("YYYY-MM-DD"),
+          end: dayjs(endDate).format("YYYY-MM-DD"),
         },
       },
     );
     log.debug(`Got ${plugin} events from ${start} to ${end}`);
     return parseJson<CalendarEvent[]>(res.data, `${plugin} calendar events`);
+  }
+
+  /**
+   * School holidays + public holidays from the holiday plugin, plus movable
+   * free days found on regular calendars.
+   */
+  async getHolidays(
+    options: { nextLimit?: number; asOf?: string } = {},
+  ): Promise<HolidaysOverview> {
+    const today = options.asOf ? dayjs(options.asOf) : dayjs();
+    if (!today.isValid()) {
+      throw new IServApiError(`Invalid as-of date: "${options.asOf}"`, 400);
+    }
+    const nextLimit = options.nextLimit ?? 12;
+    const rangeStart = today.subtract(6, "month").format("YYYY-MM-DD");
+    const rangeEnd = today.add(18, "month").format("YYYY-MM-DD");
+
+    const [pluginEvents, calendars] = await Promise.all([
+      this.getPluginEvents("holiday", rangeStart, rangeEnd),
+      this.getEvents(rangeStart, rangeEnd),
+    ]);
+
+    const ferien: HolidayPeriod[] = [];
+    const feiertage: HolidayPeriod[] = [];
+
+    for (const event of pluginEvents) {
+      const title = String(event.title ?? event.summary ?? "").trim();
+      if (!title) continue;
+      const start = parseEventInstant(event.start);
+      const end = parseEventInstant(event.end) ?? start;
+      if (!start || !end) continue;
+      const allDay = event.allDay !== false;
+      const fields = Array.isArray(event.displayFields) ? event.displayFields : [];
+      const description = fields
+        .map((field) =>
+          field && typeof field === "object" && "text" in field
+            ? String((field as { text?: unknown }).text ?? "")
+            : "",
+        )
+        .join(" ");
+      const kind: HolidayKind = /feiertag/i.test(description)
+        ? "feiertag"
+        : /ferien/i.test(description) || /ferien$/i.test(title)
+          ? "ferien"
+          : "feiertag";
+      const period = buildPeriod(title, kind, start, end, allDay, today, "holiday");
+      if (kind === "ferien") ferien.push(period);
+      else feiertage.push(period);
+    }
+
+    const movable: HolidayPeriod[] = [];
+    const seenMovable = new Set<string>();
+    for (const [calendarId, events] of Object.entries(calendars)) {
+      for (const event of events) {
+        const title = String(event.title ?? event.summary ?? "").trim();
+        if (!title || !isMovableFreeTitle(title)) continue;
+        // Avoid duplicating official Ferien blocks already covered by the plugin
+        if (/^(oster|sommer|herbst|weihnachts|winter)ferien$/i.test(title)) continue;
+        const start = parseEventInstant(event.start);
+        const end = parseEventInstant(event.end) ?? start;
+        if (!start || !end) continue;
+        const allDay = event.allDay !== false;
+        const period = buildPeriod(
+          title,
+          "beweglich",
+          start,
+          end,
+          allDay,
+          today,
+          calendarId,
+        );
+        const key = `${period.start}|${period.end}|${period.name}`;
+        if (seenMovable.has(key)) continue;
+        seenMovable.add(key);
+        movable.push(period);
+      }
+    }
+
+    const seasons: HolidayPeriod[] = [];
+    for (const def of SEASON_DEFS) {
+      const candidates = ferien.filter((item) => def.match.test(item.name));
+      const picked = pickSeasonOccurrence(candidates, today);
+      if (picked) {
+        seasons.push({ ...picked, name: def.label });
+      } else {
+        seasons.push({
+          name: def.label,
+          kind: "ferien",
+          start: "",
+          end: "",
+          startLabel: "—",
+          endLabel: "—",
+          status: "past",
+          daysUntilStart: 0,
+          daysRemaining: 0,
+          countdown: "—",
+        });
+      }
+    }
+
+    const nextPool = [...ferien, ...feiertage, ...movable]
+      .filter((item) => item.status === "ongoing" || item.status === "upcoming")
+      .sort((a, b) => {
+        if (a.status !== b.status) return a.status === "ongoing" ? -1 : 1;
+        return a.start.localeCompare(b.start) || a.name.localeCompare(b.name);
+      });
+
+    log.info("Got holiday overview");
+    return {
+      asOf: today.format("YYYY-MM-DD"),
+      asOfLabel: formatDayLabel(today),
+      seasons,
+      next: nextPool.slice(0, Math.max(1, nextLimit)),
+      movable: movable
+        .filter((item) => item.status !== "past")
+        .sort((a, b) => a.start.localeCompare(b.start)),
+    };
   }
 
   async deleteEvent(options: DeleteEventOptions): Promise<string> {

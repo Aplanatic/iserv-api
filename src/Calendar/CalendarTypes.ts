@@ -81,3 +81,35 @@ export interface CalendarEventSource {
 export type CalendarEventsByCalendar = Record<string, CalendarEvent[]>;
 
 export type CalendarEventSearchResult = Record<string, JsonValue>;
+
+export type HolidayKind = "ferien" | "feiertag" | "beweglich";
+
+export type HolidayStatus = "upcoming" | "ongoing" | "past";
+
+export interface HolidayPeriod {
+  name: string;
+  kind: HolidayKind;
+  /** Inclusive start date YYYY-MM-DD */
+  start: string;
+  /** Inclusive end date YYYY-MM-DD */
+  end: string;
+  startLabel: string;
+  endLabel: string;
+  status: HolidayStatus;
+  daysUntilStart: number;
+  daysRemaining: number;
+  countdown: string;
+  source?: string;
+}
+
+export interface HolidaysOverview {
+  asOf: string;
+  asOfLabel: string;
+  /** Named school-break seasons for the current/next cycle */
+  seasons: HolidayPeriod[];
+  /** Upcoming free days/periods (ferien, feiertage, beweglich) */
+  next: HolidayPeriod[];
+  /** Movable school-free days from regular calendars */
+  movable: HolidayPeriod[];
+}
+

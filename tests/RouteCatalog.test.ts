@@ -27,6 +27,7 @@ describe("RouteCatalog", () => {
     expect(catalog.get("files.overview").lastVerified).toBe("2026-07-20");
     expect(catalog.get("messenger.members").authentication).toBe("matrix-bearer");
     expect(catalog.get("calendar.plugin_events").status).toBe("experimental");
+    expect(catalog.get("calendar.holidays").status).toBe("supported");
   });
 
   test("ranks exact route matches and applies agent-friendly filters", () => {

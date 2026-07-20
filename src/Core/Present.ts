@@ -163,6 +163,50 @@ function presentBadges(value: Record<string, unknown>): unknown {
   };
 }
 
+function presentHolidays(value: Record<string, unknown>): unknown {
+  const seasons = Array.isArray(value.seasons) ? value.seasons : [];
+  const next = Array.isArray(value.next) ? value.next : [];
+  const movable = Array.isArray(value.movable) ? value.movable : [];
+  const mode = value.mode === "next" ? "next" : "seasons";
+  const source = mode === "next" ? next : seasons;
+  const items = source.map((entry) => {
+    if (!isRecord(entry)) return { value: String(entry) };
+    const start = String(entry.startLabel ?? "—");
+    const end = String(entry.endLabel ?? "—");
+    const range =
+      start === "—" && end === "—"
+        ? "—"
+        : start === end
+          ? start
+          : `${start} – ${end}`;
+    return {
+      name: cleanText(String(entry.name ?? "—")),
+      range,
+      countdown: cleanText(String(entry.countdown ?? "—")),
+      ...(mode === "next" && typeof entry.kind === "string"
+        ? { kind: entry.kind }
+        : {}),
+    };
+  });
+  const title =
+    mode === "next"
+      ? `Nächste freie Tage · Stand ${String(value.asOfLabel ?? "")}`.trim()
+      : `Ferien · Stand ${String(value.asOfLabel ?? "")}`.trim();
+  const extra =
+    mode === "seasons" && movable.length > 0
+      ? {
+          message: `${movable.length} bewegliche Ferientage voraus — iserv calendar holidays --next`,
+        }
+      : {};
+  return {
+    title,
+    empty: items.length === 0,
+    ...(items.length === 0 ? { message: "Keine Ferien-/Feiertagsdaten gefunden." } : {}),
+    items,
+    ...extra,
+  };
+}
+
 function presentUpcoming(value: Record<string, unknown>): unknown {
   const events = Array.isArray(value.events) ? value.events : [];
   if (events.length === 0) {
@@ -351,6 +395,11 @@ export function presentForDisplay(value: unknown): unknown {
     !("email" in value)
   ) {
     return presentBadges(value);
+  }
+
+  // Holiday / Ferien countdown
+  if (Array.isArray(value.seasons) && Array.isArray(value.next) && "asOf" in value) {
+    return presentHolidays(value);
   }
 
   // Upcoming events

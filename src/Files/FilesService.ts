@@ -33,6 +33,9 @@ export class FilesService {
   }
 
   async getFolderSize(folderPath: string): Promise<FolderSize> {
+    if (!folderPath || !folderPath.trim()) {
+      throw new IServApiError("Folder path is required (e.g. / or /Files).", 400);
+    }
     validateFolderPath(folderPath);
     const res = await this.session.http.get(`${this.session.baseUrl()}/iserv/file/calc`, {
       params: { path: folderPath },

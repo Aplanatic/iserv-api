@@ -17,12 +17,19 @@ export class NotificationService {
     return parseIServJsonData<NotificationsData>(res.data, "notifications");
   }
 
-  async getBadges(): Promise<NavigationBadges> {
+  async getBadges(): Promise<NavigationBadges & { fetchedAt: string }> {
     const res = await this.session.http.get(
       `${this.session.baseUrl()}/iserv/app/navigation/badges`,
+      {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      },
     );
     log.info("Got badges");
-    return parseJson<NavigationBadges>(res.data, "navigation badges");
+    const badges = parseJson<NavigationBadges>(res.data, "navigation badges");
+    return { ...badges, fetchedAt: new Date().toISOString() };
   }
 
   async readAll(): Promise<JsonValue> {

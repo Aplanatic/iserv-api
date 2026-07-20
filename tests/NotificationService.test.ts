@@ -74,15 +74,23 @@ describe("NotificationService", () => {
         {
           method: "get",
           url: "https://iserv.example/iserv/app/navigation/badges",
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
           response: { data: JSON.stringify({ messenger: 2, mail: 1 }) },
         },
       ],
     });
 
-    await expect(new NotificationService(session).getBadges()).resolves.toEqual({
-      messenger: 2,
-      mail: 1,
-    });
+    const result = await new NotificationService(session).getBadges();
+    expect(result).toEqual(
+      expect.objectContaining({
+        messenger: 2,
+        mail: 1,
+        fetchedAt: expect.any(String),
+      }),
+    );
     expectAllRoutesCalled();
   });
 

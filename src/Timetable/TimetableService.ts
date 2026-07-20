@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat.js";
 import isoWeek from "dayjs/plugin/isoWeek.js";
+import { IServApiError } from "../Core/Errors.js";
 import { parseJson } from "../Core/HttpClient.js";
 import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
@@ -15,7 +16,17 @@ dayjs.extend(isoWeek);
 
 const log = createLogger("Timetable");
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+const DATE_FORMATS = ["DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY"] as const;
 
 interface RawMeta {
   filter?: {
@@ -42,13 +53,20 @@ interface RawDataResponse {
   data?: {
     timetable?: RawLesson[];
     changes?: unknown[];
+    "orphan-changes"?: unknown[];
   };
   "plain-timetable"?: unknown;
   "plain-changes"?: unknown;
 }
 
 interface MetaResponse {
-  meta?: { minperiod?: number; maxperiod?: number; maxdow?: number };
+  meta?: {
+    minperiod?: number;
+    maxperiod?: number;
+    maxdow?: number;
+    canViewTeacherTimetable?: boolean;
+    canViewTeacherChanges?: boolean;
+  };
   "personal-filter"?: {
     classes?: string[];
     teachers?: string[];
@@ -58,16 +76,15 @@ interface MetaResponse {
   };
 }
 
-function weekRange(from?: string): { startDate: string; endDate: string } {
-  const base = from
-    ? dayjs(from, ["DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY"], true)
-    : dayjs();
-  const start = (base.isValid() ? base : dayjs()).startOf("isoWeek");
-  const end = start.add(4, "day"); // Mon-Fri
-  return {
-    startDate: start.format("DD.MM.YYYY"),
-    endDate: end.format("DD.MM.YYYY"),
-  };
+function parseRequiredDate(value: string, label: string): dayjs.Dayjs {
+  const parsed = dayjs(value.trim(), DATE_FORMATS, true);
+  if (!parsed.isValid()) {
+    throw new IServApiError(
+      `Invalid ${label}: "${value}". Use DD.MM.YYYY or YYYY-MM-DD.`,
+      400,
+    );
+  }
+  return parsed;
 }
 
 function lessonLabel(lesson: TimetableLesson): string {
@@ -77,21 +94,62 @@ function lessonLabel(lesson: TimetableLesson): string {
   return parts.join(" · ");
 }
 
-function buildGrid(lessons: TimetableLesson[], maxDow: number): {
-  days: string[];
-  periods: number[];
-  grid: Record<string, Record<string, string>>;
-  rows: Array<Record<string, string>>;
-} {
-  const days = DAY_NAMES.slice(0, Math.max(1, Math.min(maxDow, 7)));
+function normalizeChange(raw: unknown): TimetableChange | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const entry = raw as Record<string, unknown>;
+  const change: TimetableChange = {};
+  for (const [key, value] of Object.entries(entry)) {
+    if (value === null || value === undefined || value === "") continue;
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      change[key] = value;
+    }
+  }
+  return Object.keys(change).length > 0 ? change : null;
+}
+
+function collectChanges(payload: RawDataResponse): TimetableChange[] {
+  const buckets = [
+    payload.data?.changes,
+    payload.data?.["orphan-changes"],
+    Array.isArray(payload["plain-changes"]) ? payload["plain-changes"] : undefined,
+  ];
+  const out: TimetableChange[] = [];
+  for (const bucket of buckets) {
+    if (!Array.isArray(bucket)) continue;
+    for (const item of bucket) {
+      const normalized = normalizeChange(item);
+      if (normalized) out.push(normalized);
+    }
+  }
+  return out;
+}
+
+function buildPeriods(
+  lessons: TimetableLesson[],
+  meta?: MetaResponse["meta"],
+): number[] {
   const periodSet = new Set<number>();
   for (const lesson of lessons) periodSet.add(lesson.period);
-  const periods = [...periodSet].sort((a, b) => a - b);
-  if (periods.length === 0) {
-    for (let p = 1; p <= 10; p++) periods.push(p);
+  if (periodSet.size === 0) {
+    const min = meta?.minperiod ?? 1;
+    const max = Math.max(min, meta?.maxperiod ?? 10);
+    return Array.from({ length: max - min + 1 }, (_, i) => min + i);
   }
+  // Fill gaps (e.g. period 7 missing between 6 and 8) so empty slots stay visible
+  const min = Math.min(...periodSet);
+  const max = Math.max(...periodSet);
+  return Array.from({ length: max - min + 1 }, (_, i) => min + i);
+}
 
-  const grid: Record<string, Record<string, string>> = {};
+function buildRows(
+  lessons: TimetableLesson[],
+  days: string[],
+  periods: number[],
+): Array<Record<string, string>> {
   const buckets = new Map<string, TimetableLesson[]>();
   for (const lesson of lessons) {
     const day = DAY_NAMES[lesson.dayOfWeek - 1] ?? `Day ${lesson.dayOfWeek}`;
@@ -104,18 +162,13 @@ function buildGrid(lessons: TimetableLesson[], maxDow: number): {
   const rows: Array<Record<string, string>> = [];
   for (const period of periods) {
     const row: Record<string, string> = { Period: String(period) };
-    const gridRow: Record<string, string> = {};
     for (const day of days) {
       const list = buckets.get(`${period}|${day}`) ?? [];
-      const label = list.map(lessonLabel).join(" / ") || "—";
-      row[day] = label;
-      gridRow[day] = label;
+      row[day] = list.map(lessonLabel).join(" / ") || "—";
     }
-    grid[String(period)] = gridRow;
     rows.push(row);
   }
-
-  return { days, periods, grid, rows };
+  return rows;
 }
 
 export class TimetableService {
@@ -128,23 +181,31 @@ export class TimetableService {
     return parseJson<MetaResponse>(res.data, "timetable meta");
   }
 
-  async getWeek(options: { startDate?: string; endDate?: string } = {}): Promise<TimetableWeek> {
+  async getWeek(
+    options: { startDate?: string; endDate?: string } = {},
+  ): Promise<TimetableWeek> {
     const meta = await this.getMeta();
     const personal = meta["personal-filter"] ?? {};
     const classes = (personal.classes ?? []).filter((c) => c && c !== "%");
     const teachers = personal.teachers?.length ? personal.teachers : ["%"];
     const rooms = personal.rooms?.length ? personal.rooms : ["%"];
-    const range = weekRange(options.startDate);
-    const startDate = options.startDate
-      ? dayjs(options.startDate, ["DD.MM.YYYY", "YYYY-MM-DD"], true).isValid()
-        ? dayjs(options.startDate, ["DD.MM.YYYY", "YYYY-MM-DD"], true).format("DD.MM.YYYY")
-        : range.startDate
-      : range.startDate;
-    const endDate = options.endDate
-      ? dayjs(options.endDate, ["DD.MM.YYYY", "YYYY-MM-DD"], true).isValid()
-        ? dayjs(options.endDate, ["DD.MM.YYYY", "YYYY-MM-DD"], true).format("DD.MM.YYYY")
-        : range.endDate
-      : range.endDate;
+
+    const start = options.startDate
+      ? parseRequiredDate(options.startDate, "start date").startOf("isoWeek")
+      : dayjs().startOf("isoWeek");
+    const end = options.endDate
+      ? parseRequiredDate(options.endDate, "end date")
+      : start.add(4, "day");
+
+    if (end.isBefore(start, "day")) {
+      throw new IServApiError(
+        "Start date must be on or before end date.",
+        400,
+      );
+    }
+
+    const startDate = start.format("DD.MM.YYYY");
+    const endDate = end.format("DD.MM.YYYY");
 
     const filter = {
       startDate,
@@ -154,11 +215,23 @@ export class TimetableService {
       rooms,
     };
 
-    const res = await this.session.http.get(
-      `${this.session.baseUrl()}/iserv/timetable/data`,
-      { params: { filter: JSON.stringify(filter) } },
-    );
-    const payload = parseJson<RawDataResponse>(res.data, "timetable data");
+    let payload: RawDataResponse;
+    try {
+      const res = await this.session.http.get(
+        `${this.session.baseUrl()}/iserv/timetable/data`,
+        { params: { filter: JSON.stringify(filter) } },
+      );
+      payload = parseJson<RawDataResponse>(res.data, "timetable data");
+    } catch (error) {
+      if (error instanceof IServApiError && error.status === 400) {
+        throw new IServApiError(
+          `Timetable rejected date range ${startDate} – ${endDate}. Pick a week inside the published school year.`,
+          400,
+        );
+      }
+      throw error;
+    }
+
     const rawLessons = payload.data?.timetable ?? [];
     const lessons: TimetableLesson[] = rawLessons.map((lesson) => ({
       id: lesson.id,
@@ -171,9 +244,11 @@ export class TimetableService {
       date: lesson.date,
     }));
 
-    const changes = (payload.data?.changes ?? []) as TimetableChange[];
+    const changes = collectChanges(payload);
     const maxDow = meta.meta?.maxdow ?? 5;
-    const { days, periods, grid, rows } = buildGrid(lessons, maxDow);
+    const days = DAY_NAMES.slice(0, Math.max(1, Math.min(maxDow, 7)));
+    const periods = buildPeriods(lessons, meta.meta);
+    const rows = buildRows(lessons, days, periods);
 
     log.info("Got timetable week");
     return {
@@ -183,10 +258,13 @@ export class TimetableService {
       lastUpdated: payload.meta?.["last-updated"],
       days,
       periods,
-      grid,
       lessons,
       changes,
       rows,
+      visibility: {
+        teachers: Boolean(meta.meta?.canViewTeacherTimetable),
+        changes: Boolean(meta.meta?.canViewTeacherChanges),
+      },
     };
   }
 }

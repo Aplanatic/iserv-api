@@ -138,7 +138,10 @@ function presentNotifications(value: Record<string, unknown>): unknown {
 
 function presentBadges(value: Record<string, unknown>): unknown {
   const items = Object.entries(value)
-    .filter(([, count]) => typeof count === "number" && count > 0)
+    .filter(
+      ([key, count]) =>
+        key !== "fetchedAt" && typeof count === "number" && count > 0,
+    )
     .map(([module, count]) => ({ module, count: String(count) }));
   if (items.length === 0) {
     return {
@@ -146,9 +149,18 @@ function presentBadges(value: Record<string, unknown>): unknown {
       empty: true,
       message: "No unread badges.",
       items: [],
+      ...(typeof value.fetchedAt === "string"
+        ? { fetchedAt: value.fetchedAt }
+        : {}),
     };
   }
-  return { title: "Badges", items };
+  return {
+    title: "Badges",
+    items,
+    ...(typeof value.fetchedAt === "string"
+      ? { message: `Fetched ${value.fetchedAt}` }
+      : {}),
+  };
 }
 
 function presentUpcoming(value: Record<string, unknown>): unknown {
@@ -330,11 +342,11 @@ export function presentForDisplay(value: unknown): unknown {
     return presentNotifications(value);
   }
 
-  // Badges (flat number map)
-  const values = Object.values(value);
+  // Badges (flat number map, optional fetchedAt)
+  const badgeValues = Object.entries(value).filter(([key]) => key !== "fetchedAt");
   if (
-    values.length > 0 &&
-    values.every((v) => typeof v === "number") &&
+    badgeValues.length > 0 &&
+    badgeValues.every(([, v]) => typeof v === "number") &&
     !("name" in value) &&
     !("email" in value)
   ) {

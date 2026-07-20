@@ -11,6 +11,7 @@ import { NotificationService } from "../Notifications/NotificationService.js";
 import { routeCatalog } from "../Routes/RouteCatalog.js";
 import { TimetableService } from "../Timetable/TimetableService.js";
 import { UserService } from "../User/UserService.js";
+import { IServApiError } from "./Errors.js";
 import { isHtmlResponse, summarizeHtml } from "./HtmlSummary.js";
 import type { HtmlExtractedData } from "./HtmlSummary.js";
 import { parseJson } from "./HttpClient.js";
@@ -238,7 +239,7 @@ export class IServAPI {
       route.method !== "GET" ||
       route.sideEffect !== "read" ||
       route.authentication !== "session" ||
-      route.status !== "supported"
+      (route.status !== "supported" && route.status !== "experimental")
     ) {
       throw new Error(`Route ${routeId} is not eligible for the read-only executor`);
     }
@@ -258,8 +259,10 @@ export class IServAPI {
           _summary: buildJsonSummary(structured),
         };
       }
-    } catch {
-      // Fall through to generic HTML/JSON path
+    } catch (error) {
+      // Keep client validation / not-found errors instead of falling through to raw HTML
+      if (error instanceof IServApiError) throw error;
+      // Fall through to generic HTML/JSON path for unexpected structured failures
     }
 
     let path = route.path;

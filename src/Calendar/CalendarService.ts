@@ -291,6 +291,9 @@ export class CalendarService {
   async getEvents(start: string, end: string): Promise<CalendarEventsByCalendar> {
     const startDate = parseDate(start);
     const endDate = parseDate(end);
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new IServApiError("Start date must be on or before end date.", 400);
+    }
     const res = await this.session.http.get(
       `${this.session.baseUrl()}/iserv/calendar/feed/calendar-multi`,
       {
@@ -311,6 +314,9 @@ export class CalendarService {
   ): Promise<CalendarEventSearchResult[]> {
     const startDate = parseDate(start);
     const endDate = parseDate(end);
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new IServApiError("Start date must be on or before end date.", 400);
+    }
     const res = await this.session.http.get(
       `${this.session.baseUrl()}/iserv/calendar/api/lookup_event`,
       {
@@ -331,6 +337,9 @@ export class CalendarService {
     }
     const startDate = parseDate(start);
     const endDate = parseDate(end);
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new IServApiError("Start date must be on or before end date.", 400);
+    }
     const res = await this.session.http.get(
       `${this.session.baseUrl()}/iserv/calendar/feed/plugin`,
       {

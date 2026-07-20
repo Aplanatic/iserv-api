@@ -28,9 +28,15 @@ export interface TimetableWeek {
   lastUpdated?: string;
   days: string[];
   periods: number[];
-  /** period -> day-name -> lesson label(s) */
-  grid: Record<string, Record<string, string>>;
+  /** Structured lessons (source of truth). Teacher may be null when the account cannot view teachers. */
   lessons: TimetableLesson[];
+  /** Substitutions/changes when the account can view them; otherwise usually empty. */
   changes: TimetableChange[];
+  /** Period × weekday table for display (derived from lessons). */
   rows: Array<Record<string, string>>;
+  /** What this account is allowed to see on the timetable API. */
+  visibility: {
+    teachers: boolean;
+    changes: boolean;
+  };
 }

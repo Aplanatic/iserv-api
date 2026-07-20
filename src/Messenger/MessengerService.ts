@@ -101,7 +101,7 @@ export class MessengerService {
 
     const selfId = this.session.matrixUserId;
 
-    return Object.entries(joinedRooms).map(([roomId, room]) => {
+    const rooms = Object.entries(joinedRooms).map(([roomId, room]) => {
       const nameEvent = room.state.events.find((e) => e.type === "m.room.name");
       let name = (nameEvent?.content.name as string | undefined) ?? null;
 
@@ -139,6 +139,27 @@ export class MessengerService {
         isDirect: directRoomIds.has(roomId),
       };
     });
+
+    // Resolve DM display names when sync state omitted member events (name === room id)
+    await Promise.all(
+      rooms.map(async (room) => {
+        if (room.name !== room.id && !room.name.startsWith("!")) return;
+        try {
+          const members = await this.getMembers(room.id);
+          const other = members.find(
+            (member) =>
+              member.userId !== selfId &&
+              member.membership === "join" &&
+              member.displayName,
+          );
+          if (other?.displayName) room.name = other.displayName;
+        } catch {
+          /* keep matrix id */
+        }
+      }),
+    );
+
+    return rooms;
   }
 
   async getMessages(

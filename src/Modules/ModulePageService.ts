@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Element } from "domhandler";
+import { IServApiError } from "../Core/Errors.js";
 import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
 
@@ -157,10 +158,29 @@ export class ModulePageService {
   }
 
   async showNews(id: string): Promise<ModuleListResult> {
-    const html = await this.getHtml(`/iserv/news/show/${encodeURIComponent(id)}`);
+    const trimmed = id.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new IServApiError(
+        `Invalid news id "${id}". Use a numeric id from news list (e.g. 360).`,
+        400,
+      );
+    }
+    let html: string;
+    try {
+      html = await this.getHtml(`/iserv/news/show/${encodeURIComponent(trimmed)}`);
+    } catch (error) {
+      if (error instanceof IServApiError && [403, 404, 500].includes(error.status)) {
+        throw new IServApiError(
+          `News entry ${trimmed} was not found or is not readable. Run news list to see available ids.`,
+          error.status === 500 ? 404 : error.status,
+        );
+      }
+      throw error;
+    }
     const { $, content } = loadContent(html);
     const title =
-      clean(content.find("h1, h2, h3, .news-title").first().text()) || `News ${id}`;
+      clean(content.find("h1, h2, h3, .news-title").first().text()) ||
+      `News ${trimmed}`;
     const meta = clean(content.find(".text-muted, small").first().text());
     const paragraphs = content
       .find("p")
@@ -175,7 +195,7 @@ export class ModulePageService {
           title,
           ...(meta ? { meta } : {}),
           ...(body ? { body: body.slice(0, 4000) } : {}),
-          id,
+          id: trimmed,
         },
       ],
     };
@@ -250,16 +270,25 @@ export class ModulePageService {
   }
 
   async listGroups(): Promise<ModuleListResult> {
-    const html = await this.getHtml("/iserv/groupview");
+    // Active-only view hides most memberships; showHidden=1 returns the full set.
+    const html = await this.getHtml("/iserv/groupview?showHidden=1");
     const { $, content } = loadContent(html);
     const items: Array<Record<string, string>> = [];
-    content.find("a.group, .flex-item.group").each((_i, el) => {
-      const $el = $(el);
-      const name = clean($el.find("h4, .media-heading").first().text()) || clean($el.text());
-      if (!name) return;
-      const href = $el.attr("href") ?? "";
-      items.push({ name, ...(href ? { href } : {}) });
-    });
+    const seen = new Set<string>();
+    content
+      .find("a.group, .flex-item.group, a[href*='/iserv/groupview/']")
+      .each((_i, el) => {
+        const $el = $(el);
+        const href = $el.attr("href") ?? "";
+        if (!/\/iserv\/groupview\/[^/?#]+/i.test(href)) return;
+        const name =
+          clean($el.find("h4, .media-heading").first().text()) || clean($el.text());
+        if (!name || /^show all groups$/i.test(name)) return;
+        const key = href.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        items.push({ name, href });
+      });
     return {
       title: "Groups",
       empty: items.length === 0,

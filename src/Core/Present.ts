@@ -127,8 +127,10 @@ function presentRooms(value: unknown[]): unknown {
     items: value.map((room) => {
       if (!isRecord(room)) return { value: String(room) };
       const last = isRecord(room.lastMessage) ? room.lastMessage : null;
-      const preview =
-        last && typeof last.body === "string" ? cleanText(last.body).slice(0, 60) : "—";
+      const bodyRaw = last?.body;
+      const previewText =
+        typeof bodyRaw === "string" ? bodyRaw : isRecord(bodyRaw) ? coercePreviewText(bodyRaw) : "";
+      const preview = previewText ? cleanText(previewText).slice(0, 60) : "—";
       const when =
         last && typeof last.timestamp === "number"
           ? shortDate(new Date(last.timestamp).toISOString())
@@ -142,6 +144,16 @@ function presentRooms(value: unknown[]): unknown {
       };
     }),
   };
+}
+
+function coercePreviewText(value: Record<string, unknown>): string {
+  if (typeof value.body === "string") return value.body;
+  if (typeof value.formatted_body === "string") return value.formatted_body;
+  return "";
+}
+
+function isMessengerRoomItem(value: unknown): boolean {
+  return isRecord(value) && "unreadCount" in value && "isDirect" in value;
 }
 
 function presentNotifications(value: Record<string, unknown>): unknown {
@@ -338,7 +350,7 @@ export function presentForDisplay(value: unknown): unknown {
       return presentContacts(value);
     }
     // Messenger rooms
-    if (isRecord(value[0]) && "unreadCount" in value[0] && "isDirect" in value[0]) {
+    if (isMessengerRoomItem(value[0])) {
       return presentRooms(value);
     }
     // Disk space entries
@@ -390,9 +402,20 @@ export function presentForDisplay(value: unknown): unknown {
     return value;
   }
   if (typeof value.title === "string" && Array.isArray(value.items)) {
+    const items = value.items as unknown[];
+    if (items.length > 0 && isMessengerRoomItem(items[0])) {
+      const rooms = presentRooms(items) as Record<string, unknown>;
+      return {
+        ...rooms,
+        title: value.title,
+        ...(typeof value.note === "string" ? { note: value.note } : {}),
+        ...(typeof value.message === "string" ? { message: value.message } : {}),
+        ...(value.empty === true ? { empty: true } : {}),
+      };
+    }
     return {
       ...value,
-      items: presentModuleRows(value.items as unknown[]),
+      items: presentModuleRows(items),
     };
   }
 

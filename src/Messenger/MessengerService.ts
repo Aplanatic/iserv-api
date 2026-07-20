@@ -38,6 +38,17 @@ function shortMxid(userId: string): string {
 }
 
 /** Pull readable text from a Matrix room message / encrypted event. */
+function coerceMessageText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.body === "string") return record.body;
+    if (typeof record.formatted_body === "string") return record.formatted_body;
+  }
+  return "";
+}
+
 function extractEventBody(event: { type?: string; content?: Record<string, unknown> }): string {
   if (event.type === "m.room.encrypted") return "[encrypted]";
   const content = (event.content ?? {}) as Record<string, unknown>;
@@ -46,9 +57,13 @@ function extractEventBody(event: { type?: string; content?: Record<string, unkno
     nestedRaw && typeof nestedRaw === "object" && !Array.isArray(nestedRaw)
       ? (nestedRaw as Record<string, unknown>)
       : undefined;
-  const raw =
-    content.body ?? content.formatted_body ?? nested?.body ?? nested?.formatted_body ?? "";
-  return String(raw);
+  return (
+    coerceMessageText(content.body) ||
+    coerceMessageText(content.formatted_body) ||
+    coerceMessageText(nested?.body) ||
+    coerceMessageText(nested?.formatted_body) ||
+    ""
+  );
 }
 
 function activityNote(messages: Message[], selfId: string | null): string | undefined {

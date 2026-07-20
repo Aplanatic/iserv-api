@@ -26,9 +26,9 @@ console.log(info);
 await api.disconnect();
 ```
 
-For reusable sessions, use `AuthBroker`; the password is used only during login and is not
-persisted afterward. Scoped session cookies and tokens are stored only in the operating
-system credential store. `routeCatalog` exposes typed route metadata and
+For reusable sessions, use `AuthBroker`; credentials, scoped session cookies, and tokens
+are stored only in the operating system credential store so WebDAV and session renewal
+continue to work after a restart. `routeCatalog` exposes typed route metadata and
 `npm run explorer:dev` starts the three-pane documentation explorer. Its live proxy
 is loopback-only, launch-token protected, redacted, and limited to catalogued GET routes.
 

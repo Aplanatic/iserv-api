@@ -23,8 +23,8 @@ or routes without authorization.
 - Authentication must stay on the user-selected HTTPS instance unless the isolated browser
   flow is explicitly used; stored cookies are scoped back to that instance.
 - Normal-user access is not a mechanism for bypassing permissions or probing admin routes.
-- Passwords are not persisted after login. Sessions and scoped tokens use the native
-  operating-system credential store only.
+- Credentials, sessions, and scoped tokens use the native operating-system credential
+  store only; there is no file fallback.
 - The explorer is loopback-only, token-protected, GET-only, and restricted to catalogued
   read routes.
 - Logs, traces, fixtures, issues, tests, and release assets must contain only synthetic or

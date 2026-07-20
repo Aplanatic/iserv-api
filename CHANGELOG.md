@@ -5,7 +5,6 @@
 - Block cross-origin and excessive authentication redirects before another origin is contacted.
 - Reject additional private, link-local, mapped, and reserved IP forms by default.
 - Validate avatar usernames and enforce output-path containment.
-- Stop persisting login passwords after authentication and migrate legacy keychain sessions on use.
 - Redact logger output and remove account, room, event, query, and path identifiers from diagnostics.
 - Add public security, contribution, issue-reporting, and full-history secret-scanning controls.
 - Pin GitHub Actions and release dependencies to immutable revisions.

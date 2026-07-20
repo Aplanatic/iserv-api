@@ -22,21 +22,13 @@ export {
 export { IServApiError, IServAuthError } from "./Core/Errors.js";
 export {
   type HtmlExtractedData,
-  type HtmlTable,
+  type HtmlItem,
   type HtmlList,
   type HtmlSection,
-  type HtmlItem,
+  type HtmlTable,
   isHtmlResponse,
   summarizeHtml,
 } from "./Core/HtmlSummary.js";
-export { ModulePageService } from "./Modules/ModulePageService.js";
-export type { ModuleListResult } from "./Modules/ModulePageService.js";
-export { TimetableService } from "./Timetable/TimetableService.js";
-export type {
-  TimetableChange,
-  TimetableLesson,
-  TimetableWeek,
-} from "./Timetable/TimetableTypes.js";
 export {
   assertSameOrigin,
   type NormalizedInstance,
@@ -68,6 +60,8 @@ export type {
   SendMessageResult,
   UserProfile,
 } from "./Messenger/MessengerTypes.js";
+export type { ModuleListResult } from "./Modules/ModulePageService.js";
+export { ModulePageService } from "./Modules/ModulePageService.js";
 export {
   ROUTES,
   RouteCatalog,
@@ -79,6 +73,13 @@ export {
   type RouteStatus,
   routeCatalog,
 } from "./Routes/RouteCatalog.js";
+export { TimetableService } from "./Timetable/TimetableService.js";
+export type {
+  TimetableChange,
+  TimetableDay,
+  TimetableLesson,
+  TimetableWeek,
+} from "./Timetable/TimetableTypes.js";
 export type {
   AlarmPreset,
   AlarmType,
@@ -90,8 +91,8 @@ export type {
   GetWebDavClientOptions,
   HolidayKind,
   HolidayPeriod,
-  HolidaysOverview,
   HolidayStatus,
+  HolidaysOverview,
   IntervalType,
   IServDateTime,
   NotificationItem,

@@ -15,8 +15,8 @@ import type {
   DeleteEventOptions,
   HolidayKind,
   HolidayPeriod,
-  HolidaysOverview,
   HolidayStatus,
+  HolidaysOverview,
   Recurring,
   UpcomingEvents,
 } from "./CalendarTypes.js";
@@ -66,7 +66,11 @@ function formatDayLabel(value: dayjs.Dayjs): string {
   return value.format("DD.MM.YYYY");
 }
 
-function countdownLabel(status: HolidayStatus, daysUntilStart: number, daysRemaining: number): string {
+function countdownLabel(
+  status: HolidayStatus,
+  daysUntilStart: number,
+  daysRemaining: number,
+): string {
   if (status === "ongoing") {
     if (daysRemaining <= 0) return "letzter Tag";
     return daysRemaining === 1 ? "noch 1 Tag" : `noch ${daysRemaining} Tage`;
@@ -437,16 +441,13 @@ export class CalendarService {
     if (endDate.getTime() < startDate.getTime()) {
       throw new IServApiError("Start date must be on or before end date.", 400);
     }
-    const res = await this.session.http.get(
-      `${this.session.baseUrl()}/iserv/calendar4/plugin`,
-      {
-        params: {
-          plugin,
-          start: dayjs(startDate).format("YYYY-MM-DD"),
-          end: dayjs(endDate).format("YYYY-MM-DD"),
-        },
+    const res = await this.session.http.get(`${this.session.baseUrl()}/iserv/calendar4/plugin`, {
+      params: {
+        plugin,
+        start: dayjs(startDate).format("YYYY-MM-DD"),
+        end: dayjs(endDate).format("YYYY-MM-DD"),
       },
-    );
+    });
     log.debug(`Got ${plugin} events from ${start} to ${end}`);
     return parseJson<CalendarEvent[]>(res.data, `${plugin} calendar events`);
   }
@@ -511,15 +512,7 @@ export class CalendarService {
         const end = parseEventInstant(event.end) ?? start;
         if (!start || !end) continue;
         const allDay = event.allDay !== false;
-        const period = buildPeriod(
-          title,
-          "beweglich",
-          start,
-          end,
-          allDay,
-          today,
-          calendarId,
-        );
+        const period = buildPeriod(title, "beweglich", start, end, allDay, today, calendarId);
         const key = `${period.start}|${period.end}|${period.name}`;
         if (seenMovable.has(key)) continue;
         seenMovable.add(key);

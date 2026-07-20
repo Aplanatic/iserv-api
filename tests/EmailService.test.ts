@@ -249,13 +249,68 @@ describe("EmailService", () => {
           {
             method: "get",
             url: `https://iserv.example/iserv/mail/api/v2/account/${encodeURIComponent(ACCOUNT_ID)}/message`,
-            params: { "mailbox[]": INBOX_ID, limit: 1000, offset: 0, sort: "date", order: "desc" },
+            params: { "mailbox[]": INBOX_ID, limit: 200, offset: 0, sort: "date", order: "desc" },
             headers: { "X-ISERV-CSRF-PROTECTION": "yes pls" },
             response: { data: JSON.stringify({ items: [], offset: 0, total: 0, all: 0 }) },
           },
         ],
       });
       await expect(new EmailService(session).getEmails({ limit: 1000 })).resolves.toBeDefined();
+    });
+
+    test("pages beyond the server 200-item cap until limit is met", async () => {
+      const page = (offset: number, count: number) =>
+        Array.from({ length: count }, (_, i) => ({
+          date: "2026-01-01",
+          id: { accountId: ACCOUNT_ID, mailboxId: INBOX_ID, uid: offset + i + 1 },
+          mailboxInfo: { name: "INBOX", path: "INBOX", type: "inbox" },
+          from: [],
+          to: [],
+          subject: `m${offset + i + 1}`,
+          size: 1,
+          attachmentCount: 0,
+          tags: [],
+          read: true,
+          flagged: false,
+          answered: false,
+          forwarded: false,
+          messageId: `<${offset + i + 1}@example>`,
+        }));
+      const { session } = createMockIServSession({
+        username: "test.user",
+        routes: [
+          {
+            method: "get",
+            url: `https://iserv.example/iserv/mail/api/v2/account/${encodeURIComponent(ACCOUNT_ID)}/message`,
+            params: { "mailbox[]": INBOX_ID, limit: 200, offset: 0, sort: "date", order: "desc" },
+            headers: { "X-ISERV-CSRF-PROTECTION": "yes pls" },
+            response: {
+              data: JSON.stringify({ items: page(0, 200), offset: 0, total: 450, all: 450 }),
+            },
+          },
+          {
+            method: "get",
+            url: `https://iserv.example/iserv/mail/api/v2/account/${encodeURIComponent(ACCOUNT_ID)}/message`,
+            params: { "mailbox[]": INBOX_ID, limit: 200, offset: 200, sort: "date", order: "desc" },
+            headers: { "X-ISERV-CSRF-PROTECTION": "yes pls" },
+            response: {
+              data: JSON.stringify({ items: page(200, 200), offset: 200, total: 450, all: 450 }),
+            },
+          },
+          {
+            method: "get",
+            url: `https://iserv.example/iserv/mail/api/v2/account/${encodeURIComponent(ACCOUNT_ID)}/message`,
+            params: { "mailbox[]": INBOX_ID, limit: 50, offset: 400, sort: "date", order: "desc" },
+            headers: { "X-ISERV-CSRF-PROTECTION": "yes pls" },
+            response: {
+              data: JSON.stringify({ items: page(400, 50), offset: 400, total: 450, all: 450 }),
+            },
+          },
+        ],
+      });
+      const result = await new EmailService(session).getEmails({ limit: 450 });
+      expect(result.items).toHaveLength(450);
+      expect(result.total).toBe(450);
     });
   });
 

@@ -45,3 +45,19 @@ export interface TimetableWeek {
     substitutionsUrl?: string;
   };
 }
+
+export interface TimetableDay {
+  class: string;
+  date: string;
+  dateLabel: string;
+  dayName: string;
+  dayOfWeek: number;
+  lessons: TimetableLesson[];
+  /** Compact period rows for display */
+  rows: Array<Record<string, string>>;
+  changes: TimetableChange[];
+  lastUpdated?: string;
+  visibility: TimetableWeek["visibility"];
+  empty: boolean;
+  message?: string;
+}

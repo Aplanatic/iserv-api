@@ -33,7 +33,12 @@ function addrLabel(value: unknown): string {
 
 function formatAddrs(value: unknown): string {
   if (!Array.isArray(value) || value.length === 0) return "—";
-  return value.map(addrLabel).filter((v) => v !== "—").join(", ") || "—";
+  return (
+    value
+      .map(addrLabel)
+      .filter((v) => v !== "—")
+      .join(", ") || "—"
+  );
 }
 
 function shortDate(value: unknown): string {
@@ -101,9 +106,7 @@ function presentContacts(value: unknown[]): unknown {
       const name = cleanText(String(entry.name ?? "???"));
       const shortId = cleanText(String(entry.shortId ?? entry.userId ?? "—"));
       const note =
-        typeof entry.note === "string" && entry.note.trim()
-          ? cleanText(entry.note)
-          : undefined;
+        typeof entry.note === "string" && entry.note.trim() ? cleanText(entry.note) : undefined;
       return {
         contact: note ? `${name} (${shortId}) – ${note}` : `${name} (${shortId})`,
       };
@@ -121,9 +124,7 @@ function presentRooms(value: unknown[]): unknown {
       if (!isRecord(room)) return { value: String(room) };
       const last = isRecord(room.lastMessage) ? room.lastMessage : null;
       const preview =
-        last && typeof last.body === "string"
-          ? cleanText(last.body).slice(0, 60)
-          : "—";
+        last && typeof last.body === "string" ? cleanText(last.body).slice(0, 60) : "—";
       const when =
         last && typeof last.timestamp === "number"
           ? shortDate(new Date(last.timestamp).toISOString())
@@ -164,10 +165,7 @@ function presentNotifications(value: Record<string, unknown>): unknown {
 
 function presentBadges(value: Record<string, unknown>): unknown {
   const items = Object.entries(value)
-    .filter(
-      ([key, count]) =>
-        key !== "fetchedAt" && typeof count === "number" && count > 0,
-    )
+    .filter(([key, count]) => key !== "fetchedAt" && typeof count === "number" && count > 0)
     .map(([module, count]) => ({ module, count: String(count) }));
   if (items.length === 0) {
     return {
@@ -175,17 +173,13 @@ function presentBadges(value: Record<string, unknown>): unknown {
       empty: true,
       message: "No unread badges.",
       items: [],
-      ...(typeof value.fetchedAt === "string"
-        ? { fetchedAt: value.fetchedAt }
-        : {}),
+      ...(typeof value.fetchedAt === "string" ? { fetchedAt: value.fetchedAt } : {}),
     };
   }
   return {
     title: "Badges",
     items,
-    ...(typeof value.fetchedAt === "string"
-      ? { message: `Fetched ${value.fetchedAt}` }
-      : {}),
+    ...(typeof value.fetchedAt === "string" ? { message: `Fetched ${value.fetchedAt}` } : {}),
   };
 }
 
@@ -199,19 +193,12 @@ function presentHolidays(value: Record<string, unknown>): unknown {
     if (!isRecord(entry)) return { value: String(entry) };
     const start = String(entry.startLabel ?? "—");
     const end = String(entry.endLabel ?? "—");
-    const range =
-      start === "—" && end === "—"
-        ? "—"
-        : start === end
-          ? start
-          : `${start} – ${end}`;
+    const range = start === "—" && end === "—" ? "—" : start === end ? start : `${start} – ${end}`;
     return {
       name: cleanText(String(entry.name ?? "—")),
       range,
       countdown: cleanText(String(entry.countdown ?? "—")),
-      ...(mode === "next" && typeof entry.kind === "string"
-        ? { kind: entry.kind }
-        : {}),
+      ...(mode === "next" && typeof entry.kind === "string" ? { kind: entry.kind } : {}),
     };
   });
   const title =
@@ -248,9 +235,7 @@ function presentUpcoming(value: Record<string, unknown>): unknown {
     items: events.map((event) => {
       if (!isRecord(event)) return { value: String(event) };
       return {
-        title: cleanText(
-          String(event.title ?? event.summary ?? event.subject ?? "Event"),
-        ),
+        title: cleanText(String(event.title ?? event.summary ?? event.subject ?? "Event")),
         start: shortDate(event.start ?? event.begin ?? event.dtstart),
         end: shortDate(event.end ?? event.dtend),
         calendar: cleanText(String(event.calendar ?? event.source ?? "—")),
@@ -311,12 +296,11 @@ function presentModuleRows(items: unknown[]): unknown[] {
       let text = cleanText(String(entry));
       if (key.toLowerCase().includes("deadline") || key.toLowerCase().includes("date")) {
         // Prefer first datetime if concatenated
-        const m = text.match(
-          /^(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i,
-        );
+        const m = text.match(/^(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i);
         if (m) text = m[1]!;
       }
       if (text && text !== "—") out[key] = text;
+      else if (/^(exercise|title|name|subject)$/i.test(key)) out[key] = "—";
     }
     return out;
   });
@@ -332,10 +316,7 @@ function presentDiskSpace(value: unknown[]): unknown {
       const raw = entry.size ?? entry.Size ?? entry.used ?? entry.usage;
       return {
         name: cleanText(String(name ?? "—")),
-        size:
-          typeof human === "string" && human.trim()
-            ? cleanText(human)
-            : formatBytes(raw),
+        size: typeof human === "string" && human.trim() ? cleanText(human) : formatBytes(raw),
       };
     }),
   };
@@ -349,12 +330,7 @@ export function presentForDisplay(value: unknown): unknown {
   if (Array.isArray(value)) {
     if (value.length === 0) return value;
     // Messenger contacts (m.direct resolved)
-    if (
-      isRecord(value[0]) &&
-      "userId" in value[0] &&
-      "shortId" in value[0] &&
-      "name" in value[0]
-    ) {
+    if (isRecord(value[0]) && "userId" in value[0] && "shortId" in value[0] && "name" in value[0]) {
       return presentContacts(value);
     }
     // Messenger rooms
@@ -399,6 +375,14 @@ export function presentForDisplay(value: unknown): unknown {
 
   // Already structured module/timetable payloads
   if (Array.isArray(value.rows) && Array.isArray(value.days) && Array.isArray(value.periods)) {
+    return value;
+  }
+  if (
+    typeof value.date === "string" &&
+    typeof value.dayName === "string" &&
+    Array.isArray(value.rows) &&
+    Array.isArray(value.lessons)
+  ) {
     return value;
   }
   if (typeof value.title === "string" && Array.isArray(value.items)) {
@@ -513,8 +497,6 @@ function flattenRow(row: Record<string, unknown>): Record<string, unknown> {
       } else if (typeof entry.body === "string") {
         out[key] = cleanText(entry.body).slice(0, 60);
       } else {
-        // Skip deep nested objects in tables
-        continue;
       }
     }
   }

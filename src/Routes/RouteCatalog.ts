@@ -642,7 +642,8 @@ export const ROUTES = [
     ],
     provenance: liveContract("calendar4 plugin feed for holiday/exam-plan/exercise"),
     lastVerified: "2026-07-20",
-    compatibility: "Prefer calendar.holidays for Ferien countdown; raw plugin feed stays experimental.",
+    compatibility:
+      "Prefer calendar.holidays for Ferien countdown; raw plugin feed stays experimental.",
   },
   {
     id: "calendar.holidays",
@@ -950,6 +951,22 @@ export const ROUTES = [
     status: "supported",
     parameters: [],
     provenance: liveContract("sanitized normal-user GET contract"),
+    lastVerified: "2026-07-20",
+  },
+  {
+    id: "timetable.today",
+    module: "timetable",
+    method: "GET",
+    path: "/iserv/timetable/data",
+    summary: "Today's personal timetable",
+    description:
+      "Filters the personal week timetable down to one day (today by default) as a period list.",
+    authentication: "session",
+    capability: "module:timetable",
+    sideEffect: "read",
+    status: "supported",
+    parameters: [p("date", "query", false, "Day as DD.MM.YYYY or YYYY-MM-DD (default: today)")],
+    provenance: liveContract("timetable data filtered to one weekday"),
     lastVerified: "2026-07-20",
   },
   {

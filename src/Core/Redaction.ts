@@ -4,7 +4,8 @@ const HOST = /\b(?:[a-z0-9-]+\.)+(?:de|com|org|net|edu|eu|app|dev|school|cloud|i
 const ROUTE_ID = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9_]*$/;
 
 // Keys that are safe to keep (internal metadata, structural fields)
-const SAFE_KEY = /^(kind|routeId|status|durationMs|_summary|_csrf_present|_nav_items|_active_nav|_user|bytes|title|caption|heading|headers|action|method|fields|level|text|href|label|items|content|module|sideEffect|authentication|capability|summary|description|path|provenance|reference|lastVerified|compatibility|name|username|displayName|access|catalogued|verifiedReadRoutes)$/i;
+const SAFE_KEY =
+  /^(kind|routeId|status|durationMs|_summary|_csrf_present|_nav_items|_active_nav|_user|bytes|title|caption|heading|headers|action|method|fields|level|text|href|label|items|content|module|sideEffect|authentication|capability|summary|description|path|provenance|reference|lastVerified|compatibility|name|username|displayName|access|catalogued|verifiedReadRoutes)$/i;
 
 export function redactText(value: string): string {
   return value.replace(EMAIL, "[redacted-email]").replace(HOST, (host) => {
@@ -13,11 +14,7 @@ export function redactText(value: string): string {
   });
 }
 
-export function redactValue(
-  value: unknown,
-  depth = 0,
-  opts?: { maxArrayItems?: number },
-): unknown {
+export function redactValue(value: unknown, depth = 0, opts?: { maxArrayItems?: number }): unknown {
   // Match the highest intentional list limit (mail API allows up to 1000)
   const maxArrayItems = opts?.maxArrayItems ?? 1000;
   if (depth > 16) return "[truncated]";
@@ -32,11 +29,7 @@ export function redactValue(
         // Secret keys: always redact
         if (SECRET_KEY.test(key)) return [key, "[redacted]"];
         // Route IDs: preserve as-is
-        if (
-          key === "routeId" &&
-          typeof entry === "string" &&
-          ROUTE_ID.test(entry)
-        ) {
+        if (key === "routeId" && typeof entry === "string" && ROUTE_ID.test(entry)) {
           return [key, entry];
         }
         // Structural/display metadata keys: skip redaction

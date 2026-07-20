@@ -7,6 +7,7 @@ import type { IServSession } from "../Core/IServSession.js";
 import { createLogger } from "../Core/Logger.js";
 import type {
   TimetableChange,
+  TimetableDay,
   TimetableLesson,
   TimetableWeek,
 } from "./TimetableTypes.js";
@@ -16,17 +17,9 @@ dayjs.extend(isoWeek);
 
 const log = createLogger("Timetable");
 
-const DAY_NAMES = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-const DATE_FORMATS = ["DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY"] as const;
+const DATE_FORMATS: string[] = ["DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY"];
 
 interface RawMeta {
   filter?: {
@@ -79,10 +72,7 @@ interface MetaResponse {
 function parseRequiredDate(value: string, label: string): dayjs.Dayjs {
   const parsed = dayjs(value.trim(), DATE_FORMATS, true);
   if (!parsed.isValid()) {
-    throw new IServApiError(
-      `Invalid ${label}: "${value}". Use DD.MM.YYYY or YYYY-MM-DD.`,
-      400,
-    );
+    throw new IServApiError(`Invalid ${label}: "${value}". Use DD.MM.YYYY or YYYY-MM-DD.`, 400);
   }
   return parsed;
 }
@@ -100,11 +90,7 @@ function normalizeChange(raw: unknown): TimetableChange | null {
   const change: TimetableChange = {};
   for (const [key, value] of Object.entries(entry)) {
     if (value === null || value === undefined || value === "") continue;
-    if (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       change[key] = value;
     }
   }
@@ -128,10 +114,7 @@ function collectChanges(payload: RawDataResponse): TimetableChange[] {
   return out;
 }
 
-function buildPeriods(
-  lessons: TimetableLesson[],
-  meta?: MetaResponse["meta"],
-): number[] {
+function buildPeriods(lessons: TimetableLesson[], meta?: MetaResponse["meta"]): number[] {
   const periodSet = new Set<number>();
   for (const lesson of lessons) periodSet.add(lesson.period);
   if (periodSet.size === 0) {
@@ -175,15 +158,11 @@ export class TimetableService {
   constructor(private readonly session: IServSession) {}
 
   async getMeta(): Promise<MetaResponse> {
-    const res = await this.session.http.get(
-      `${this.session.baseUrl()}/iserv/timetable/jsonttdata`,
-    );
+    const res = await this.session.http.get(`${this.session.baseUrl()}/iserv/timetable/jsonttdata`);
     return parseJson<MetaResponse>(res.data, "timetable meta");
   }
 
-  async getWeek(
-    options: { startDate?: string; endDate?: string } = {},
-  ): Promise<TimetableWeek> {
+  async getWeek(options: { startDate?: string; endDate?: string } = {}): Promise<TimetableWeek> {
     const meta = await this.getMeta();
     const personal = meta["personal-filter"] ?? {};
     const classes = (personal.classes ?? []).filter((c) => c && c !== "%");
@@ -199,18 +178,14 @@ export class TimetableService {
       : start.add(4, "day");
 
     if (end.isBefore(start, "day")) {
-      throw new IServApiError(
-        "Start date must be on or before end date.",
-        400,
-      );
+      throw new IServApiError("Start date must be on or before end date.", 400);
     }
 
     const startDate = start.format("DD.MM.YYYY");
     const endDate = end.format("DD.MM.YYYY");
     const snappedRequested =
       requestedStart &&
-      parseRequiredDate(requestedStart, "start date").format("DD.MM.YYYY") !==
-        startDate
+      parseRequiredDate(requestedStart, "start date").format("DD.MM.YYYY") !== startDate
         ? requestedStart
         : undefined;
 
@@ -224,10 +199,9 @@ export class TimetableService {
 
     let payload: RawDataResponse;
     try {
-      const res = await this.session.http.get(
-        `${this.session.baseUrl()}/iserv/timetable/data`,
-        { params: { filter: JSON.stringify(filter) } },
-      );
+      const res = await this.session.http.get(`${this.session.baseUrl()}/iserv/timetable/data`, {
+        params: { filter: JSON.stringify(filter) },
+      });
       payload = parseJson<RawDataResponse>(res.data, "timetable data");
     } catch (error) {
       if (error instanceof IServApiError && error.status === 400) {
@@ -276,7 +250,7 @@ export class TimetableService {
       startDate,
       endDate,
       ...(snappedRequested ? { requestedStart: snappedRequested } : {}),
-      lastUpdated: payload.meta?.["last-updated"],
+      ...(payload.meta?.["last-updated"] ? { lastUpdated: payload.meta["last-updated"] } : {}),
       days,
       periods,
       lessons,
@@ -291,12 +265,76 @@ export class TimetableService {
     };
   }
 
+  /**
+   * Today's (or a given day's) lessons as a flat period list.
+   */
+  async getToday(options: { date?: string } = {}): Promise<TimetableDay> {
+    const target = options.date ? parseRequiredDate(options.date, "date") : dayjs();
+    const dateKey = target.format("DD.MM.YYYY");
+    const week = await this.getWeek({ startDate: dateKey });
+    const dayOfWeek = target.isoWeekday(); // 1=Mon … 7=Sun
+    const dayName = DAY_NAMES[dayOfWeek - 1] ?? target.format("dddd");
+
+    // Prefer exact date match; fall back to weekday template rows without a date
+    const byDate = week.lessons.filter((lesson) => lesson.date === dateKey);
+    const byDow = week.lessons.filter((lesson) => lesson.dayOfWeek === dayOfWeek && !lesson.date);
+    const todays = (byDate.length > 0 ? byDate : byDow)
+      .slice()
+      .sort((a, b) => a.period - b.period || a.subject.localeCompare(b.subject));
+
+    const byPeriod = new Map<number, TimetableLesson[]>();
+    for (const lesson of todays) {
+      const list = byPeriod.get(lesson.period) ?? [];
+      list.push(lesson);
+      byPeriod.set(lesson.period, list);
+    }
+    const rows = [...byPeriod.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([period, list]) => ({
+        Period: String(period),
+        Lesson: list.map(lessonLabel).join(" / "),
+        ...(week.visibility.teachers
+          ? {
+              Teacher: list.map((item) => item.teacher ?? "—").join(" / "),
+            }
+          : {}),
+      }));
+
+    const changes = week.changes.filter((change) => {
+      if (typeof change.date !== "string") return false;
+      const parsed = dayjs(change.date, DATE_FORMATS, true);
+      return parsed.isValid() && parsed.format("DD.MM.YYYY") === dateKey;
+    });
+
+    const weekend = dayOfWeek >= 6;
+    const empty = todays.length === 0;
+    const message = empty
+      ? weekend
+        ? `No lessons on ${dayName} (${dateKey}).`
+        : `No lessons scheduled for ${dayName} (${dateKey}).`
+      : undefined;
+
+    log.info("Got timetable day");
+    return {
+      class: week.class,
+      date: dateKey,
+      dateLabel: dateKey,
+      dayName,
+      dayOfWeek,
+      lessons: todays,
+      rows,
+      changes,
+      ...(week.lastUpdated ? { lastUpdated: week.lastUpdated } : {}),
+      visibility: week.visibility,
+      empty,
+      ...(message ? { message } : {}),
+    };
+  }
+
   private async findSubstitutionsUrl(): Promise<string | undefined> {
     const res = await this.session.http.get(`${this.session.baseUrl()}/iserv`);
     const html = String(res.data);
-    const match = html.match(
-      /href="(https?:\/\/[^"]*vertretungsplan[^"]*)"/i,
-    );
+    const match = html.match(/href="(https?:\/\/[^"]*vertretungsplan[^"]*)"/i);
     return match?.[1];
   }
 }

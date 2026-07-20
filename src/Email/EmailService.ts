@@ -62,12 +62,44 @@ export class EmailService {
       throw new IServApiError("offset must be a non-negative integer", 400);
     }
     const mailboxId = encodeMailboxId(mailbox);
-    const res = await this.session.http.get(
-      `${this.session.baseUrl()}/iserv/mail/api/v2/account/${encodeURIComponent(this.accountId)}/message`,
-      { params: { "mailbox[]": mailboxId, limit, offset, sort, order }, headers: CSRF_HEADERS },
-    );
+    // IServ often caps a single page around 200 — page until we satisfy `limit`.
+    const pageSize = 200;
+    const items: EmailList["items"] = [];
+    let cursor = offset;
+    let total = 0;
+    let lastPage: EmailList | undefined;
+
+    while (items.length < limit) {
+      const batch = Math.min(pageSize, limit - items.length);
+      const res = await this.session.http.get(
+        `${this.session.baseUrl()}/iserv/mail/api/v2/account/${encodeURIComponent(this.accountId)}/message`,
+        {
+          params: {
+            "mailbox[]": mailboxId,
+            limit: batch,
+            offset: cursor,
+            sort,
+            order,
+          },
+          headers: CSRF_HEADERS,
+        },
+      );
+      const page = parseJson<EmailList>(res.data, "emails");
+      lastPage = page;
+      total = typeof page.total === "number" ? page.total : total;
+      const batchItems = Array.isArray(page.items) ? page.items : [];
+      items.push(...batchItems);
+      if (batchItems.length === 0 || batchItems.length < batch) break;
+      cursor += batchItems.length;
+    }
+
     log.info("Got emails");
-    return parseJson<EmailList>(res.data, "emails");
+    return {
+      items,
+      offset,
+      total: typeof lastPage?.total === "number" ? lastPage.total : total,
+      all: typeof lastPage?.all === "number" ? lastPage.all : total,
+    };
   }
 
   async getMessage(uid: number, mailbox = "INBOX"): Promise<EmailMessage> {

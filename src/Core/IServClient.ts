@@ -12,8 +12,8 @@ import { routeCatalog } from "../Routes/RouteCatalog.js";
 import { TimetableService } from "../Timetable/TimetableService.js";
 import { UserService } from "../User/UserService.js";
 import { IServApiError } from "./Errors.js";
-import { isHtmlResponse, summarizeHtml } from "./HtmlSummary.js";
 import type { HtmlExtractedData } from "./HtmlSummary.js";
+import { isHtmlResponse, summarizeHtml } from "./HtmlSummary.js";
 import { parseJson } from "./HttpClient.js";
 import { IServSession } from "./IServSession.js";
 import { redactValue } from "./Redaction.js";
@@ -46,9 +46,7 @@ function buildHtmlSummary(extracted: HtmlExtractedData): string {
   if (extracted.emptyMessage) parts.push(extracted.emptyMessage);
   if (extracted.items?.length) parts.push(`${extracted.items.length} items`);
   for (const table of extracted.tables) {
-    parts.push(
-      `Table${table.caption ? ` "${table.caption}"` : ""}: ${table.rows.length} rows`,
-    );
+    parts.push(`Table${table.caption ? ` "${table.caption}"` : ""}: ${table.rows.length} rows`);
   }
   if (extracted.keyValues && Object.keys(extracted.keyValues).length > 0) {
     parts.push(`${Object.keys(extracted.keyValues).length} fields`);
@@ -157,30 +155,34 @@ export class IServAPI {
     parameters: Record<string, string | number | boolean>,
   ): Promise<unknown | undefined> {
     switch (routeId) {
-      case "timetable.overview":
-        return this.timetable.getWeek({
-          startDate:
-            typeof parameters.start === "string"
-              ? parameters.start
-              : typeof parameters.startDate === "string"
-                ? parameters.startDate
-                : undefined,
-        });
-      case "exercise.list":
-        return this.modules.listExercises({
-          search:
-            typeof parameters["filter[search]"] === "string"
-              ? parameters["filter[search]"]
-              : typeof parameters.search === "string"
-                ? parameters.search
-                : undefined,
-        });
+      case "timetable.overview": {
+        const startDate =
+          typeof parameters.start === "string"
+            ? parameters.start
+            : typeof parameters.startDate === "string"
+              ? parameters.startDate
+              : undefined;
+        return this.timetable.getWeek(startDate ? { startDate } : {});
+      }
+      case "timetable.today":
+        return this.timetable.getToday(
+          typeof parameters.date === "string" ? { date: parameters.date } : {},
+        );
+      case "exercise.list": {
+        const search =
+          typeof parameters["filter[search]"] === "string"
+            ? parameters["filter[search]"]
+            : typeof parameters.search === "string"
+              ? parameters.search
+              : undefined;
+        return this.modules.listExercises(search ? { search } : {});
+      }
       case "exercise.past":
         return this.modules.listPastExercises();
       case "news.list":
-        return this.modules.listNews({
-          search: typeof parameters.search === "string" ? parameters.search : undefined,
-        });
+        return this.modules.listNews(
+          typeof parameters.search === "string" ? { search: parameters.search } : {},
+        );
       case "news.show":
         if (typeof parameters.id === "string" || typeof parameters.id === "number") {
           return this.modules.showNews(String(parameters.id));
@@ -218,17 +220,16 @@ export class IServAPI {
         return this.calendar.getEventSources();
       case "calendar.holidays": {
         const next =
-          parameters.next === true ||
-          parameters.next === "true" ||
-          parameters.mode === "next";
-        const overview = await this.calendar.getHolidays({
-          nextLimit:
-            typeof parameters.limit === "number"
-              ? parameters.limit
-              : typeof parameters.limit === "string"
-                ? Number(parameters.limit)
-                : undefined,
-        });
+          parameters.next === true || parameters.next === "true" || parameters.mode === "next";
+        const nextLimit =
+          typeof parameters.limit === "number"
+            ? parameters.limit
+            : typeof parameters.limit === "string"
+              ? Number(parameters.limit)
+              : undefined;
+        const overview = await this.calendar.getHolidays(
+          nextLimit !== undefined && !Number.isNaN(nextLimit) ? { nextLimit } : {},
+        );
         return { ...overview, mode: next ? "next" : "seasons" };
       }
       case "notifications.list":
@@ -266,12 +267,13 @@ export class IServAPI {
       const structured = await this.loadStructured(routeId, parameters);
       if (structured !== undefined) {
         const redacted = redactValue(structured);
+        const summary = buildJsonSummary(structured);
         return {
           routeId,
           status: 200,
           durationMs: Math.round(performance.now() - startedAt),
           data: redacted,
-          _summary: buildJsonSummary(structured),
+          ...(summary ? { _summary: summary } : {}),
         };
       }
     } catch (error) {
@@ -322,7 +324,7 @@ export class IServAPI {
       status: response.status,
       durationMs: Math.round(performance.now() - startedAt),
       data: redactValue(data),
-      _summary: summary,
+      ...(summary ? { _summary: summary } : {}),
     };
   }
 
@@ -390,14 +392,7 @@ function projectExtracted(extracted: HtmlExtractedData): unknown {
     }));
   }
   // If almost empty, keep a clear empty message
-  if (
-    !out.items &&
-    !out.rows &&
-    !out.tables &&
-    !out.fields &&
-    !out.lists &&
-    !out.message
-  ) {
+  if (!out.items && !out.rows && !out.tables && !out.fields && !out.lists && !out.message) {
     out.message = "No structured content found on this page.";
   }
   return out;

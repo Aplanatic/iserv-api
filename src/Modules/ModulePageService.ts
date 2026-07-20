@@ -20,10 +20,10 @@ function clean(text: string): string {
 
 function loadContent(html: string) {
   const $ = cheerio.load(html);
-  $("script, style, noscript, nav, header, footer, aside, .navbar, .sidebar, .breadcrumb, .fileupload, .dropzone, .modal").remove();
-  const content = $("#content").first().length
-    ? $("#content").first()
-    : $("main").first();
+  $(
+    "script, style, noscript, nav, header, footer, aside, .navbar, .sidebar, .breadcrumb, .fileupload, .dropzone, .modal",
+  ).remove();
+  const content = $("#content").first().length ? $("#content").first() : $("main").first();
   return { $, content };
 }
 
@@ -32,9 +32,13 @@ function tableRows(
   table: cheerio.Cheerio<Element>,
 ): { headers: string[]; rows: Array<Record<string, string>> } {
   const headers: string[] = [];
-  table.find("thead tr").first().find("th, td").each((_i, cell) => {
-    headers.push(clean($(cell).text()));
-  });
+  table
+    .find("thead tr")
+    .first()
+    .find("th, td")
+    .each((_i, cell) => {
+      headers.push(clean($(cell).text()));
+    });
   while (headers.length && !headers[0]) headers.shift();
   while (headers.length && !headers[headers.length - 1]) headers.pop();
   const finalHeaders = headers.map((h, i) => h || `Col ${i + 1}`);
@@ -44,15 +48,13 @@ function tableRows(
     const values: string[] = [];
     $(row)
       .find("td, th")
-      .each((_j, cell) => values.push(clean($(cell).text())));
+      .each((_j, cell) => {
+        values.push(clean($(cell).text()));
+      });
     while (values.length && !values[0] && values.length > finalHeaders.length) {
       values.shift();
     }
-    while (
-      values.length &&
-      !values[values.length - 1] &&
-      values.length > finalHeaders.length
-    ) {
+    while (values.length && !values[values.length - 1] && values.length > finalHeaders.length) {
       values.pop();
     }
     if (values.every((v) => !v || /^(delete|hide|edit|show|highlight unread posts)$/i.test(v))) {
@@ -86,9 +88,7 @@ function tableRows(
       }
       // Prefer first datetime if two were concatenated
       if (/deadline|date|edited|created|post/i.test(key)) {
-        const m = text.match(
-          /^(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i,
-        );
+        const m = text.match(/^(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i);
         if (m) data[key] = m[1]!;
       }
       if (!data[key] || /^none$/i.test(data[key]!)) delete data[key];
@@ -128,17 +128,9 @@ export class ModulePageService {
       const href = $el.find(".news-title a, h3 a").first().attr("href") ?? "";
       const meta = clean(
         $el.find(".text-muted, small, .news-meta").first().text() ||
-          $el
-            .text()
-            .replace(title, "")
-            .split("|")
-            .slice(0, 2)
-            .join(" | ")
-            .slice(0, 120),
+          $el.text().replace(title, "").split("|").slice(0, 2).join(" | ").slice(0, 120),
       );
-      const body = clean(
-        $el.find("p, .news-content").first().text(),
-      ).slice(0, 240);
+      const body = clean($el.find("p, .news-content").first().text()).slice(0, 240);
       const idMatch = href.match(/\/news\/show\/(\d+)/);
       items.push({
         title,
@@ -178,23 +170,59 @@ export class ModulePageService {
       throw error;
     }
     const { $, content } = loadContent(html);
-    const title =
-      clean(content.find("h1, h2, h3, .news-title").first().text()) ||
-      `News ${trimmed}`;
-    const meta = clean(content.find(".text-muted, small").first().text());
-    const paragraphs = content
-      .find("p")
-      .map((_i, el) => clean($(el).text()))
-      .get()
-      .filter((p) => p.length > 0);
-    const body = paragraphs.join("\n\n");
+    const isGenericTitle = (value: string) =>
+      !value || /^news(\s+\d+)?$/i.test(value) || value === trimmed;
+
+    const titleCandidates = [
+      clean(content.find(".news-title").first().text()),
+      clean(content.find(".panel-title, .panel-heading").first().text()),
+      clean(content.find("article h1, article h2, .page-header h1").first().text()),
+      clean(content.find("h1").first().text()),
+      clean(content.find("h2").first().text()),
+      clean(content.find("h3").first().text()),
+      clean($("title").first().text())
+        .replace(/\s*[|\u2013-].*$/, "")
+        .trim(),
+    ].filter((value) => !isGenericTitle(value));
+
+    const title = titleCandidates[0] ?? `News ${trimmed}`;
+
+    const metaCandidates = [
+      clean(content.find(".news-meta, .meta, time").first().text()),
+      clean(content.find(".text-muted, small").first().text()),
+    ].filter((value) => value.length > 0 && value !== title);
+    const meta = metaCandidates[0];
+
+    const bodyRoot = content
+      .find(".news-content, .news-body, .news-text, article .content, .panel-body, .ck-content")
+      .first();
+    let body = "";
+    if (bodyRoot.length) {
+      const clone = bodyRoot.clone();
+      clone.find("script, style, .news-meta, .meta, time, .text-muted, small, h1, h2, h3").remove();
+      body = clean(clone.text());
+    }
+    if (!body || body.length < 40) {
+      const paragraphs = content
+        .find("p")
+        .map((_i, el) => clean($(el).text()))
+        .get()
+        .filter(
+          (p) => p.length > 40 && p !== title && p !== meta && !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(p),
+        );
+      body = paragraphs.join("\n\n");
+    }
+    if (meta && body.startsWith(meta)) {
+      body = clean(body.slice(meta.length));
+    }
+
     return {
       title,
       items: [
         {
           title,
           ...(meta ? { meta } : {}),
-          ...(body ? { body: body.slice(0, 4000) } : {}),
+          ...(body ? { body: body.slice(0, 8000) } : {}),
           id: trimmed,
         },
       ],
@@ -214,11 +242,12 @@ export class ModulePageService {
   }
 
   async listPastExercises(): Promise<ModuleListResult> {
-    return this.listTablePage(
-      "/iserv/exercise/past/exercise",
-      "Past exercises",
-      ["Exercise", "Deadline", "Feedbacks", "Tags"],
-    );
+    return this.listTablePage("/iserv/exercise/past/exercise", "Past exercises", [
+      "Exercise",
+      "Deadline",
+      "Feedbacks",
+      "Tags",
+    ]);
   }
 
   async listForums(): Promise<ModuleListResult> {
@@ -242,16 +271,12 @@ export class ModulePageService {
   }
 
   async listMailingLists(): Promise<ModuleListResult> {
-    return this.listTablePage("/iserv/mailinglist", "Mailing lists", [
-      "Title",
-      "Owner",
-      "Entries",
-    ]);
+    return this.listTablePage("/iserv/mailinglist", "Mailing lists", ["Title", "Owner", "Entries"]);
   }
 
   async listPolls(): Promise<ModuleListResult> {
     const html = await this.getHtml("/iserv/poll");
-    const { $, content } = loadContent(html);
+    const { content } = loadContent(html);
     const text = clean(content.text());
     const empty =
       /no polls|currently no polls|keine umfrage/i.test(text) ||
@@ -275,25 +300,22 @@ export class ModulePageService {
     const { $, content } = loadContent(html);
     const items: Array<Record<string, string>> = [];
     const seen = new Set<string>();
-    content
-      .find("a.group, .flex-item.group, a[href*='/iserv/groupview/']")
-      .each((_i, el) => {
-        const $el = $(el);
-        const href = $el.attr("href") ?? "";
-        if (!/\/iserv\/groupview\/[^/?#]+/i.test(href)) return;
-        let name =
-          clean($el.find("h4, .media-heading").first().text()) || clean($el.text());
-        if (!name || /^show (all|only active) groups$/i.test(name)) return;
-        // "Cl ClusterAG owned byDaniel Richter" → "ClusterAG"
-        name = name
-          .replace(/\s+owned by\s+.+$/i, "")
-          .replace(/^[A-Za-z0-9]{1,3}\s+(?=[A-Za-zÄÖÜäöü])/, "")
-          .trim();
-        const key = href.toLowerCase();
-        if (seen.has(key)) return;
-        seen.add(key);
-        items.push({ name, href });
-      });
+    content.find("a.group, .flex-item.group, a[href*='/iserv/groupview/']").each((_i, el) => {
+      const $el = $(el);
+      const href = $el.attr("href") ?? "";
+      if (!/\/iserv\/groupview\/[^/?#]+/i.test(href)) return;
+      let name = clean($el.find("h4, .media-heading").first().text()) || clean($el.text());
+      if (!name || /^show (all|only active) groups$/i.test(name)) return;
+      // "Cl ClusterAG owned byDaniel Richter" → "ClusterAG"
+      name = name
+        .replace(/\s+owned by\s+.+$/i, "")
+        .replace(/^[A-Za-z0-9]{1,3}\s+(?=[A-Za-zÄÖÜäöü])/, "")
+        .trim();
+      const key = href.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push({ name, href });
+    });
     return {
       title: "Groups",
       empty: items.length === 0,
@@ -314,8 +336,7 @@ export class ModulePageService {
       return {
         title: "Course selections",
         empty: true,
-        message:
-          text || "There are no open selections at the moment.",
+        message: text || "There are no open selections at the moment.",
         items: [],
       };
     }
@@ -324,7 +345,7 @@ export class ModulePageService {
 
   async listPrintJobs(): Promise<ModuleListResult> {
     const html = await this.getHtml("/iserv/print");
-    const { $, content } = loadContent(html);
+    const { content } = loadContent(html);
     // Print page is mostly an upload form; surface job tokens if present.
     const text = clean(content.text());
     const jobs: Array<Record<string, string>> = [];
@@ -335,10 +356,11 @@ export class ModulePageService {
     return {
       title: "Print",
       empty: jobs.length === 0,
-      message:
-        jobs.length === 0
-          ? "No print jobs queued. Use the web UI to upload documents for printing."
-          : undefined,
+      ...(jobs.length === 0
+        ? {
+            message: "No print jobs queued. Use the web UI to upload documents for printing.",
+          }
+        : {}),
       items: jobs,
     };
   }
@@ -405,10 +427,11 @@ export class ModulePageService {
     return {
       title: "Help",
       empty: unique.length === 0,
-      message:
-        unique.length === 0
-          ? "Help documentation is available in the IServ web UI."
-          : undefined,
+      ...(unique.length === 0
+        ? {
+            message: "Help documentation is available in the IServ web UI.",
+          }
+        : {}),
       items: unique.slice(0, 40),
     };
   }
@@ -421,10 +444,17 @@ export class ModulePageService {
       return { title: "Recent logins", empty: true, message: "No login history found.", items: [] };
     }
     const { rows } = tableRows($, table as cheerio.Cheerio<Element>);
+    const seen = new Set<string>();
+    const unique = rows.filter((row) => {
+      const key = JSON.stringify(row);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return {
       title: "Recent logins",
-      empty: rows.length === 0,
-      items: rows.slice(0, 50),
+      empty: unique.length === 0,
+      items: unique.slice(0, 50),
     };
   }
 
@@ -473,7 +503,8 @@ export class ModulePageService {
       tables.push(parsed);
     });
 
-    const primary = tables[0];
+    const primary =
+      tables.length <= 1 ? tables[0] : [...tables].sort((a, b) => b.rows.length - a.rows.length)[0];
     if (!primary || primary.rows.length === 0) {
       return {
         title,
@@ -482,11 +513,21 @@ export class ModulePageService {
         items: [],
       };
     }
+    // Drop placeholder rows that only have action chrome / empty titles
+    const titleKey =
+      primary.headers.find((h) => /^(exercise|title|name)$/i.test(h)) ??
+      preferredHeaders?.find((h) => /^(exercise|title|name)$/i.test(h));
+    const items = titleKey
+      ? primary.rows.filter((row) => {
+          const value = row[titleKey];
+          return Boolean(value && value.trim() && !/^(delete|edit|show|hide)$/i.test(value));
+        })
+      : primary.rows;
     log.info(`Listed ${title}`);
     return {
       title,
-      empty: false,
-      items: primary.rows,
+      empty: items.length === 0,
+      items,
       tables,
     };
   }

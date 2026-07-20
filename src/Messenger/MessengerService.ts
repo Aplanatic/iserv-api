@@ -50,8 +50,7 @@ function activityNote(messages: Message[], selfId: string | null): string | unde
   );
   const videos = media.filter(
     (message) =>
-      message.msgtype === "m.video" ||
-      /video|\.(mp4|mov|webm|mkv|avi)(\b|$)/i.test(message.body),
+      message.msgtype === "m.video" || /video|\.(mp4|mov|webm|mkv|avi)(\b|$)/i.test(message.body),
   );
   if (videos.length > 0) {
     const year = new Date(videos[0]!.timestamp).getFullYear();
@@ -197,9 +196,7 @@ export class MessengerService {
           const members = await this.getMembers(room.id);
           const other = members.find(
             (member) =>
-              member.userId !== selfId &&
-              member.membership === "join" &&
-              member.displayName,
+              member.userId !== selfId && member.membership === "join" && member.displayName,
           );
           if (other?.displayName) {
             room.name = other.displayName;
@@ -237,9 +234,7 @@ export class MessengerService {
     const direct = new Map<string, string[]>();
     for (const event of sync.account_data?.events ?? []) {
       if (event.type !== "m.direct") continue;
-      for (const [userId, roomIds] of Object.entries(
-        event.content as Record<string, string[]>,
-      )) {
+      for (const [userId, roomIds] of Object.entries(event.content as Record<string, string[]>)) {
         direct.set(userId, Array.isArray(roomIds) ? roomIds : []);
       }
     }
@@ -254,8 +249,7 @@ export class MessengerService {
           /* keep ??? */
         }
 
-        const roomId =
-          roomIds.find((id) => joined.has(id)) ?? roomIds.find(Boolean) ?? null;
+        const roomId = roomIds.find((id) => joined.has(id)) ?? roomIds.find(Boolean) ?? null;
 
         let note: string | undefined;
         let lastActiveAt: number | undefined;

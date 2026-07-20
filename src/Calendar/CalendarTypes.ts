@@ -112,4 +112,3 @@ export interface HolidaysOverview {
   /** Movable school-free days from regular calendars */
   movable: HolidayPeriod[];
 }
-

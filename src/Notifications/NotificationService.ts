@@ -29,7 +29,9 @@ export class NotificationService {
     );
     log.info("Got badges");
     const badges = parseJson<NavigationBadges>(res.data, "navigation badges");
-    return { ...badges, fetchedAt: new Date().toISOString() };
+    return Object.assign({}, badges, {
+      fetchedAt: new Date().toISOString(),
+    }) as NavigationBadges & { fetchedAt: string };
   }
 
   async readAll(): Promise<JsonValue> {

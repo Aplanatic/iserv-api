@@ -1,6 +1,6 @@
+import type { CheerioAPI } from "cheerio";
 import { load } from "cheerio";
-import type { CheerioAPI, Element } from "cheerio";
-import type { AnyNode, Text } from "domhandler";
+import type { AnyNode, Element, Text } from "domhandler";
 
 export interface HtmlExtractedData {
   kind: "html-extracted";
@@ -115,9 +115,7 @@ export function summarizeHtml(value: string): HtmlExtractedData {
   $c(".panel-heading").each((_i, el) => {
     const heading = textOf($c, el as Element).toLowerCase();
     if (
-      ["search", "latest", "categories", "news subscriptions", "quick access"].includes(
-        heading,
-      )
+      ["search", "latest", "categories", "news subscriptions", "quick access"].includes(heading)
     ) {
       $c(el).closest(".panel, .card").remove();
     }
@@ -136,7 +134,7 @@ export function summarizeHtml(value: string): HtmlExtractedData {
 
   return {
     kind: "html-extracted",
-    title,
+    ...(title ? { title } : {}),
     tables,
     keyValues,
     lists,
@@ -148,26 +146,21 @@ export function summarizeHtml(value: string): HtmlExtractedData {
 }
 
 function extractEmptyMessage($: CheerioAPI): string | undefined {
-  const candidates = [
-    ".alert-info",
-    ".alert-warning",
-    ".empty",
-    ".no-results",
-    ".text-muted",
-    "p",
-  ];
+  const candidates = [".alert-info", ".alert-warning", ".empty", ".no-results", ".text-muted", "p"];
   for (const sel of candidates) {
-    const el = $(sel).filter((_i, node) => {
-      const t = textOf($, node as Element).toLowerCase();
-      return (
-        t.includes("no ") ||
-        t.includes("currently no") ||
-        t.includes("there are no") ||
-        t.includes("there're no") ||
-        t.includes("nichts") ||
-        t.includes("keine ")
-      );
-    }).first();
+    const el = $(sel)
+      .filter((_i, node) => {
+        const t = textOf($, node as Element).toLowerCase();
+        return (
+          t.includes("no ") ||
+          t.includes("currently no") ||
+          t.includes("there are no") ||
+          t.includes("there're no") ||
+          t.includes("nichts") ||
+          t.includes("keine ")
+        );
+      })
+      .first();
     if (el.length) {
       const msg = textOf($, el.get(0) as Element);
       if (msg.length > 8 && msg.length < 240) return msg;
@@ -187,26 +180,32 @@ function extractTables($: CheerioAPI): HtmlTable[] {
 
     const caption = $table.find("caption").first().text().trim() || undefined;
     const headers: string[] = [];
-    $table.find("thead tr").first().find("th, td").each((_j, cell) => {
-      const text = textOf($, cell as Element);
-      // Skip empty action columns
-      headers.push(text || "");
-    });
+    $table
+      .find("thead tr")
+      .first()
+      .find("th, td")
+      .each((_j, cell) => {
+        const text = textOf($, cell as Element);
+        // Skip empty action columns
+        headers.push(text || "");
+      });
 
     // Drop leading/trailing empty header columns (checkbox/action cols)
     while (headers.length && !headers[0]) headers.shift();
     while (headers.length && !headers[headers.length - 1]) headers.pop();
 
     if (headers.length === 0) {
-      $table.find("tbody tr, tr").first().find("th").each((_j, cell) => {
-        headers.push(textOf($, cell as Element));
-      });
+      $table
+        .find("tbody tr, tr")
+        .first()
+        .find("th")
+        .each((_j, cell) => {
+          headers.push(textOf($, cell as Element));
+        });
     }
 
     const finalHeaders =
-      headers.filter(Boolean).length > 0
-        ? headers.map((h, i) => h || `Col ${i + 1}`)
-        : [];
+      headers.filter(Boolean).length > 0 ? headers.map((h, i) => h || `Col ${i + 1}`) : [];
 
     const rows: Record<string, string>[] = [];
     $table.find("tbody tr").each((_j, row) => {
@@ -230,11 +229,7 @@ function extractTables($: CheerioAPI): HtmlTable[] {
       while (values.length && !values[0] && values.length > finalHeaders.length) {
         values.shift();
       }
-      while (
-        values.length &&
-        !values[values.length - 1] &&
-        values.length > finalHeaders.length
-      ) {
+      while (values.length && !values[values.length - 1] && values.length > finalHeaders.length) {
         values.pop();
       }
 
@@ -257,10 +252,8 @@ function extractTables($: CheerioAPI): HtmlTable[] {
 
     if (rows.length > 0) {
       result.push({
-        caption,
-        headers: finalHeaders.length
-          ? finalHeaders
-          : Object.keys(rows[0] ?? {}),
+        ...(caption ? { caption } : {}),
+        headers: finalHeaders.length ? finalHeaders : Object.keys(rows[0] ?? {}),
         rows,
       });
     }
@@ -289,7 +282,9 @@ function extractKeyValues($: CheerioAPI): Record<string, string> {
     const labelEl = $group.find("label, .control-label").get(0) as Element | undefined;
     const label = labelEl ? textOf($, labelEl).replace(/\*$/, "").trim() : "";
     if (!label || label.length > 80) return;
-    const input = $group.find("input:not([type=hidden]):not([type=submit]), select, textarea").first();
+    const input = $group
+      .find("input:not([type=hidden]):not([type=submit]), select, textarea")
+      .first();
     let value = "";
     if (input.length) {
       const tag = input.get(0)!.tagName;
@@ -330,23 +325,22 @@ function extractKeyValues($: CheerioAPI): Record<string, string> {
 
 function extractLists($: CheerioAPI): HtmlList[] {
   const result: HtmlList[] = [];
-  $("ul.list-unstyled, ul.list-group, ol.list-group, .flex-item-list").each(
-    (_i, listEl) => {
-      const $list = $(listEl);
-      const prev = $list
-        .prevAll("h1, h2, h3, h4, .panel-heading, legend")
-        .first();
-      const label = prev.length
-        ? textOf($, prev.get(0) as Element) || undefined
-        : undefined;
-      const items: string[] = [];
-      $list.find("> li, > a.group, > .flex-item").each((_j, li) => {
-        const text = textOf($, li as Element);
-        if (text) items.push(text);
+  $("ul.list-unstyled, ul.list-group, ol.list-group, .flex-item-list").each((_i, listEl) => {
+    const $list = $(listEl);
+    const prev = $list.prevAll("h1, h2, h3, h4, .panel-heading, legend").first();
+    const label = prev.length ? textOf($, prev.get(0) as Element) || undefined : undefined;
+    const items: string[] = [];
+    $list.find("> li, > a.group, > .flex-item").each((_j, li) => {
+      const text = textOf($, li as Element);
+      if (text) items.push(text);
+    });
+    if (items.length > 0) {
+      result.push({
+        ...(label ? { label } : {}),
+        items,
       });
-      if (items.length > 0) result.push({ label, items });
-    },
-  );
+    }
+  });
   return result;
 }
 
@@ -381,9 +375,7 @@ function extractItems($: CheerioAPI): HtmlItem[] {
     const titleEl = $el.find(".news-title a, h3 a, h3").first();
     const title = textOf($, titleEl.get(0) as Element | undefined);
     if (!title) return;
-    const href = titleEl.is("a")
-      ? titleEl.attr("href")
-      : $el.find("a").first().attr("href");
+    const href = titleEl.is("a") ? titleEl.attr("href") : $el.find("a").first().attr("href");
     const metaText = $el
       .find(".news-meta, .text-muted, small")
       .first()
@@ -410,8 +402,10 @@ function extractItems($: CheerioAPI): HtmlItem[] {
     $("a.group, .flex-item.group, .media").each((_i, el) => {
       const $el = $(el);
       const title =
-        textOf($, $el.find("h4, .media-heading, .item-label").first().get(0) as Element | undefined) ||
-        textOf($, el as Element);
+        textOf(
+          $,
+          $el.find("h4, .media-heading, .item-label").first().get(0) as Element | undefined,
+        ) || textOf($, el as Element);
       if (!title || title.length > 80) return;
       const href = $el.is("a") ? $el.attr("href") : $el.find("a").first().attr("href");
       items.push({ title, ...(href ? { href } : {}) });
@@ -438,10 +432,7 @@ function extractItems($: CheerioAPI): HtmlItem[] {
   });
 }
 
-export function isHtmlResponse(
-  value: unknown,
-  contentType?: string,
-): value is string {
+export function isHtmlResponse(value: unknown, contentType?: string): value is string {
   if (typeof value !== "string") return false;
   if (contentType?.toLowerCase().includes("text/html")) return true;
   return /^\s*<!doctype html|^\s*<html[\s>]/i.test(value);

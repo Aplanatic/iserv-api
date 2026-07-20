@@ -25,10 +25,12 @@ export interface TimetableWeek {
   class: string;
   startDate: string;
   endDate: string;
+  /** Original --start value when it was snapped to the ISO week Monday */
+  requestedStart?: string;
   lastUpdated?: string;
   days: string[];
   periods: number[];
-  /** Structured lessons (source of truth). Teacher may be null when the account cannot view teachers. */
+  /** Structured lessons (source of truth). Teacher omitted when the account cannot view teachers. */
   lessons: TimetableLesson[];
   /** Substitutions/changes when the account can view them; otherwise usually empty. */
   changes: TimetableChange[];
@@ -38,5 +40,8 @@ export interface TimetableWeek {
   visibility: {
     teachers: boolean;
     changes: boolean;
+    note?: string;
+    /** External substitutions board when IServ itself exposes no changes */
+    substitutionsUrl?: string;
   };
 }

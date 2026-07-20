@@ -281,9 +281,14 @@ export class ModulePageService {
         const $el = $(el);
         const href = $el.attr("href") ?? "";
         if (!/\/iserv\/groupview\/[^/?#]+/i.test(href)) return;
-        const name =
+        let name =
           clean($el.find("h4, .media-heading").first().text()) || clean($el.text());
-        if (!name || /^show all groups$/i.test(name)) return;
+        if (!name || /^show (all|only active) groups$/i.test(name)) return;
+        // "Cl ClusterAG owned byDaniel Richter" → "ClusterAG"
+        name = name
+          .replace(/\s+owned by\s+.+$/i, "")
+          .replace(/^[A-Za-z0-9]{1,3}\s+(?=[A-Za-zÄÖÜäöü])/, "")
+          .trim();
         const key = href.toLowerCase();
         if (seen.has(key)) return;
         seen.add(key);
@@ -292,7 +297,11 @@ export class ModulePageService {
     return {
       title: "Groups",
       empty: items.length === 0,
-      ...(items.length === 0 ? { message: "No groups visible." } : {}),
+      ...(items.length === 0
+        ? { message: "No groups visible for this account." }
+        : {
+            message: `${items.length} group${items.length === 1 ? "" : "s"} (account memberships).`,
+          }),
       items,
     };
   }

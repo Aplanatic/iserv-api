@@ -18,7 +18,8 @@ export function redactValue(
   depth = 0,
   opts?: { maxArrayItems?: number },
 ): unknown {
-  const maxArrayItems = opts?.maxArrayItems ?? 200;
+  // Match the highest intentional list limit (mail API allows up to 1000)
+  const maxArrayItems = opts?.maxArrayItems ?? 1000;
   if (depth > 16) return "[truncated]";
   if (typeof value === "string") return redactText(value);
   if (Array.isArray(value)) {

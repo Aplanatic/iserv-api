@@ -190,8 +190,9 @@ export class TimetableService {
     const teachers = personal.teachers?.length ? personal.teachers : ["%"];
     const rooms = personal.rooms?.length ? personal.rooms : ["%"];
 
-    const start = options.startDate
-      ? parseRequiredDate(options.startDate, "start date").startOf("isoWeek")
+    const requestedStart = options.startDate?.trim();
+    const start = requestedStart
+      ? parseRequiredDate(requestedStart, "start date").startOf("isoWeek")
       : dayjs().startOf("isoWeek");
     const end = options.endDate
       ? parseRequiredDate(options.endDate, "end date")
@@ -206,6 +207,12 @@ export class TimetableService {
 
     const startDate = start.format("DD.MM.YYYY");
     const endDate = end.format("DD.MM.YYYY");
+    const snappedRequested =
+      requestedStart &&
+      parseRequiredDate(requestedStart, "start date").format("DD.MM.YYYY") !==
+        startDate
+        ? requestedStart
+        : undefined;
 
     const filter = {
       startDate,
@@ -232,11 +239,14 @@ export class TimetableService {
       throw error;
     }
 
+    const canViewTeachers = Boolean(meta.meta?.canViewTeacherTimetable);
+    const canViewChanges = Boolean(meta.meta?.canViewTeacherChanges);
+
     const rawLessons = payload.data?.timetable ?? [];
     const lessons: TimetableLesson[] = rawLessons.map((lesson) => ({
       id: lesson.id,
       class: lesson.class,
-      teacher: lesson.teacher,
+      teacher: canViewTeachers ? lesson.teacher : null,
       subject: lesson.subject,
       room: lesson.room,
       dayOfWeek: lesson.dow,
@@ -250,11 +260,22 @@ export class TimetableService {
     const periods = buildPeriods(lessons, meta.meta);
     const rows = buildRows(lessons, days, periods);
 
+    const substitutionsUrl = await this.findSubstitutionsUrl().catch(() => undefined);
+    const visibilityNote =
+      !canViewTeachers && !canViewChanges
+        ? "IServ does not expose teacher names or in-app substitutions for this account role."
+        : !canViewTeachers
+          ? "IServ does not expose teacher names for this account role."
+          : !canViewChanges
+            ? "IServ does not expose substitutions for this account role."
+            : undefined;
+
     log.info("Got timetable week");
     return {
       class: classes[0] ?? "personal",
       startDate,
       endDate,
+      ...(snappedRequested ? { requestedStart: snappedRequested } : {}),
       lastUpdated: payload.meta?.["last-updated"],
       days,
       periods,
@@ -262,9 +283,20 @@ export class TimetableService {
       changes,
       rows,
       visibility: {
-        teachers: Boolean(meta.meta?.canViewTeacherTimetable),
-        changes: Boolean(meta.meta?.canViewTeacherChanges),
+        teachers: canViewTeachers,
+        changes: canViewChanges,
+        ...(visibilityNote ? { note: visibilityNote } : {}),
+        ...(substitutionsUrl ? { substitutionsUrl } : {}),
       },
     };
+  }
+
+  private async findSubstitutionsUrl(): Promise<string | undefined> {
+    const res = await this.session.http.get(`${this.session.baseUrl()}/iserv`);
+    const html = String(res.data);
+    const match = html.match(
+      /href="(https?:\/\/[^"]*vertretungsplan[^"]*)"/i,
+    );
+    return match?.[1];
   }
 }

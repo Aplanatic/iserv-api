@@ -31,7 +31,7 @@ async function browserExecutable(): Promise<string> {
     }
   }
   throw new Error(
-    "No supported browser found; set ISERV_BROWSER_PATH to Chrome, Chromium, or Edge",
+    "No supported system browser found for --browser login. Install Chrome, Chromium, or Edge, or set ISERV_BROWSER_PATH to the browser binary. (playwright-core drives your installed browser — no `npx playwright install` required.)",
   );
 }
 

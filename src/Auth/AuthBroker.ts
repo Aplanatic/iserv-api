@@ -13,6 +13,8 @@ export interface LoginOptions {
   password: string;
   challengeHandler?: AuthChallengeHandler;
   allowPrivateHost?: boolean;
+  /** Store cookies only; omit password from the keychain (SMTP/WebDAV need a full login). */
+  ephemeral?: boolean;
 }
 
 export interface BrowserLoginOptions {
@@ -51,7 +53,7 @@ export class AuthBroker {
     );
     await this.credentials.set(
       options.profile,
-      JSON.stringify(client.exportSession({ includePassword: true })),
+      JSON.stringify(client.exportSession({ includePassword: !options.ephemeral })),
     );
     await this.profiles.upsert({
       name: options.profile,
@@ -75,11 +77,14 @@ export class AuthBroker {
     const document = await this.profiles.read();
     const name = profile ?? document.activeProfile;
     if (!name) throw new Error("No active IServ profile; run the login command first");
-    const client = await this.restore(name);
+    const encoded = await this.credentials.get(name);
+    if (!encoded) throw new Error(`No native-keychain session exists for profile: ${name}`);
+    const prior = JSON.parse(encoded) as StoredSession;
+    const client = IServAPI.restore(prior);
     await client.ensureMessengerSession();
     await this.credentials.set(
       name,
-      JSON.stringify(client.exportSession({ includePassword: true })),
+      JSON.stringify(client.exportSession({ includePassword: Boolean(prior.password) })),
     );
     return client;
   }
@@ -142,5 +147,14 @@ export class AuthBroker {
     } finally {
       await this.credentials.delete(name);
     }
+  }
+
+  async logoutAll(): Promise<string[]> {
+    const document = await this.profiles.read();
+    const names = document.profiles.map((profile) => profile.name);
+    for (const name of names) {
+      await this.logout(name);
+    }
+    return names;
   }
 }

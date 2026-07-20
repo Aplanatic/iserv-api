@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import type nodemailer from "nodemailer";
 import { IServApiError } from "../Core/Errors.js";
@@ -16,6 +17,20 @@ import type {
 const log = createLogger("Email");
 
 const CSRF_HEADERS = { "X-ISERV-CSRF-PROTECTION": "yes pls" };
+
+/** Expand ~ and resolve relative paths; absolute paths are allowed. Rejects traversal. */
+export function resolveAttachmentPath(filePath: string): string {
+  if (!filePath || filePath.includes("\0")) {
+    throw new IServApiError("Invalid attachment path", 400);
+  }
+  const expanded =
+    filePath === "~"
+      ? homedir()
+      : filePath.startsWith("~/") || filePath.startsWith("~\\")
+        ? path.join(homedir(), filePath.slice(2))
+        : filePath;
+  return path.resolve(expanded);
+}
 
 function encodeMailboxId(mailbox: string): string {
   return Buffer.from(mailbox).toString("base64").replace(/=/g, "");
@@ -201,14 +216,13 @@ export class EmailService {
       throw new IServApiError("smtpsPort must be 465 or 587", 400);
     }
 
-    for (const filePath of attachments) {
-      if (
-        filePath.includes("\0") ||
-        filePath.split(/[\\/]/).includes("..") ||
-        path.isAbsolute(filePath)
-      ) {
+    const resolvedAttachments = attachments.map((filePath) => {
+      if (filePath.includes("\0") || filePath.split(/[\\/]/).includes("..")) {
         throw new IServApiError("Invalid attachment path", 400);
       }
+      return resolveAttachmentPath(filePath);
+    });
+    for (const filePath of resolvedAttachments) {
       await fs.access(filePath).catch(() => {
         throw new IServApiError(`Attachment not found: "${path.basename(filePath)}"`, 400);
       });
@@ -217,7 +231,7 @@ export class EmailService {
     const transporter = nodemailer.createTransport({
       host: server,
       port: smtpsPort,
-      secure: true,
+      secure: smtpsPort === 465,
       auth: { user: this.session.username, pass: this.session.getPassword() },
       pool: true,
       maxConnections: 1,
@@ -244,7 +258,7 @@ export class EmailService {
               headers: { "X-Idempotency-Key": key },
             }
           : {}),
-        attachments: attachments.map((filePath) => ({
+        attachments: resolvedAttachments.map((filePath) => ({
           path: filePath,
           filename: path.basename(filePath),
         })),

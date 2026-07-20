@@ -43,6 +43,14 @@ export class FilesService {
     return parseIServJsonData<FolderSize>(res.data, "folder size");
   }
 
+  async listWebDav(folderPath = "/"): Promise<unknown[]> {
+    validateFolderPath(folderPath || "/");
+    const client = this.getClient();
+    const entries = await client.getDirectoryContents(folderPath || "/");
+    log.info("Listed WebDAV directory");
+    return Array.isArray(entries) ? entries : [entries];
+  }
+
   async getDiskSpace(): Promise<DiskSpaceEntry[]> {
     const res = await this.session.http.get(`${this.session.baseUrl()}/iserv/du/account`);
     const match = (res.data as string).match(/id="user-diskusage-data"[^>]*>([^<]+)</);

@@ -12,6 +12,10 @@ describe("redaction", () => {
     expect(redactText("account.get src/User/UserService.ts")).toBe(
       "account.get src/User/UserService.ts",
     );
+    expect(redactValue({ routeId: "account.info", source: "portal.example.org" })).toEqual({
+      routeId: "account.info",
+      source: "[redacted-host]",
+    });
   });
 
   test("redacts secret-shaped object fields and bounds arrays", () => {

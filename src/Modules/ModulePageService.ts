@@ -70,10 +70,29 @@ function tableRows(
         if (v) data[`Col ${i + 1}`] = v;
       });
     }
-    // Clean forum title noise
+    // Clean forum title noise and duplicated deadline cells
     if (data.Title) {
       data.Title = data.Title.replace(/\s*Highlight unread posts\s*/gi, "").trim();
     }
+    for (const key of Object.keys(data)) {
+      const text = data[key]!;
+      // Collapse accidental doubled cell text (common in IServ deadline columns)
+      if (text.length >= 8 && text.length % 2 === 0) {
+        const half = text.length / 2;
+        if (text.slice(0, half) === text.slice(half)) {
+          data[key] = text.slice(0, half);
+        }
+      }
+      // Prefer first datetime if two were concatenated
+      if (/deadline|date|edited|created|post/i.test(key)) {
+        const m = text.match(
+          /^(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)/i,
+        );
+        if (m) data[key] = m[1]!;
+      }
+      if (!data[key] || /^none$/i.test(data[key]!)) delete data[key];
+    }
+    // Drop noisy href-only columns from display payloads later; keep for now if useful
     if (Object.keys(data).length) rows.push(data);
   });
   return { headers: finalHeaders, rows };

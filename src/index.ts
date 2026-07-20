@@ -49,6 +49,7 @@ export {
   type ReadRouteResult,
   type StoredSession,
 } from "./Core/IServClient.js";
+export { presentForDisplay } from "./Core/Present.js";
 export { redactText, redactValue } from "./Core/Redaction.js";
 export type { PatchMessageResult } from "./Email/EmailTypes.js";
 export { startExplorerServer } from "./Explorer/ExplorerServer.js";

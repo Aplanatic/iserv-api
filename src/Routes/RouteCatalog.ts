@@ -30,6 +30,14 @@ export interface RouteDefinition {
   compatibility?: string;
 }
 
+export interface RouteSearchOptions {
+  module?: string;
+  method?: RouteMethod;
+  sideEffect?: RouteSideEffect;
+  status?: RouteStatus;
+  limit?: number;
+}
+
 const p = (
   name: string,
   location: RouteParameter["location"],
@@ -123,6 +131,7 @@ export const ROUTES = [
     status: "supported",
     parameters: [p("username", "path", true, "IServ account name")],
     provenance: upstream("src/User/UserService.ts"),
+    lastVerified: "2026-07-20",
   },
   {
     id: "users.search",
@@ -137,6 +146,7 @@ export const ROUTES = [
     parameters: [p("filter[search]", "query", true, "Search text")],
     pagination: { limit: "limit", offset: "offset" },
     provenance: upstream("src/User/UserService.ts"),
+    lastVerified: "2026-07-20",
   },
   {
     id: "users.autocomplete",
@@ -297,6 +307,7 @@ export const ROUTES = [
       kind: "official-docs",
       reference: "https://doku.iserv.de/cookbook/external/webdav/",
     },
+    lastVerified: "2026-07-20",
   },
   {
     id: "files.size",
@@ -714,6 +725,7 @@ export const ROUTES = [
     status: "supported",
     parameters: [],
     provenance: upstream("src/Messenger/MessengerService.ts"),
+    lastVerified: "2026-07-20",
   },
   {
     id: "messenger.create_direct",
@@ -1075,13 +1087,50 @@ export class RouteCatalog {
     if (!route) throw new Error(`Unknown route id: ${id}`);
     return route;
   }
-  search(query: string): RouteDefinition[] {
+  search(query: string, options: RouteSearchOptions = {}): RouteDefinition[] {
     const needle = query.trim().toLowerCase();
-    return this.routes.filter((route) =>
-      [route.id, route.module, route.path, route.summary, route.description].some((value) =>
-        value.toLowerCase().includes(needle),
-      ),
-    );
+    const terms = needle.split(/\s+/).filter(Boolean);
+    const limit = Math.max(1, Math.min(options.limit ?? this.routes.length, 1_000));
+    return this.routes
+      .filter(
+        (route) =>
+          (!options.module || route.module === options.module) &&
+          (!options.method || route.method === options.method) &&
+          (!options.sideEffect || route.sideEffect === options.sideEffect) &&
+          (!options.status || route.status === options.status),
+      )
+      .map((route) => {
+        const id = route.id.toLowerCase();
+        const searchableId = id.replace(/[._-]+/g, " ");
+        const module = route.module.toLowerCase();
+        const path = route.path.toLowerCase();
+        const summary = route.summary.toLowerCase();
+        const description = route.description.toLowerCase();
+        const haystack = `${id} ${module} ${path} ${summary} ${description}`;
+        if (terms.some((term) => !haystack.includes(term))) return null;
+        let score = 0;
+        if (!needle) score = 1;
+        else {
+          if (id === needle) score += 200;
+          if (searchableId === needle) score += 180;
+          if (module === needle) score += 120;
+          if (id.startsWith(needle)) score += 100;
+          if (searchableId.startsWith(needle)) score += 90;
+          if (summary.startsWith(needle)) score += 60;
+          for (const term of terms) {
+            if (id.includes(term)) score += 30;
+            if (module.includes(term)) score += 20;
+            if (path.includes(term)) score += 12;
+            if (summary.includes(term)) score += 10;
+            if (description.includes(term)) score += 4;
+          }
+        }
+        return { route, score };
+      })
+      .filter((item): item is { route: RouteDefinition; score: number } => item !== null)
+      .sort((a, b) => b.score - a.score || a.route.id.localeCompare(b.route.id))
+      .slice(0, limit)
+      .map(({ route }) => route);
   }
   modules(): string[] {
     return [...new Set(this.routes.map((route) => route.module))].sort();

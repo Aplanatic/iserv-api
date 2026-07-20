@@ -33,6 +33,8 @@ export {
 export {
   IServAPI,
   IServAPI as IServClient,
+  type ReadRouteRequest,
+  type ReadRouteResult,
   type StoredSession,
 } from "./Core/IServClient.js";
 export { redactText, redactValue } from "./Core/Redaction.js";
@@ -58,6 +60,7 @@ export {
   type RouteDefinition,
   type RouteMethod,
   type RouteParameter,
+  type RouteSearchOptions,
   type RouteSideEffect,
   type RouteStatus,
   routeCatalog,

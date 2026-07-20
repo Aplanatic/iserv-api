@@ -23,6 +23,18 @@ export interface StoredSession {
   matrixUserId?: string;
 }
 
+export interface ReadRouteRequest {
+  routeId: string;
+  parameters?: Record<string, string | number | boolean>;
+}
+
+export interface ReadRouteResult {
+  routeId: string;
+  status: number;
+  durationMs: number;
+  data: unknown;
+}
+
 export class IServAPI {
   readonly calendar: CalendarService;
   readonly capabilities: CapabilityService;
@@ -101,7 +113,7 @@ export class IServAPI {
   async executeReadRoute(
     routeId: string,
     parameters: Record<string, string | number | boolean> = {},
-  ): Promise<{ routeId: string; status: number; durationMs: number; data: unknown }> {
+  ): Promise<ReadRouteResult> {
     const route = routeCatalog.get(routeId);
     if (
       route.method !== "GET" ||
@@ -149,6 +161,39 @@ export class IServAPI {
       durationMs: Math.round(performance.now() - startedAt),
       data: redactValue(data),
     };
+  }
+
+  async executeReadRoutes(
+    requests: readonly ReadRouteRequest[],
+    options: { concurrency?: number } = {},
+  ): Promise<ReadRouteResult[]> {
+    if (requests.length < 1 || requests.length > 8) {
+      throw new Error("Read batches must contain between 1 and 8 routes");
+    }
+    const concurrency = Math.max(1, Math.min(options.concurrency ?? 4, 8));
+    for (const request of requests) {
+      const route = routeCatalog.get(request.routeId);
+      if (
+        route.method !== "GET" ||
+        route.sideEffect !== "read" ||
+        route.authentication !== "session" ||
+        route.status !== "supported"
+      ) {
+        throw new Error(`Route ${request.routeId} is not eligible for the read-only executor`);
+      }
+    }
+    const results = new Array<ReadRouteResult>(requests.length);
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < requests.length) {
+        const index = nextIndex++;
+        const request = requests[index];
+        if (!request) return;
+        results[index] = await this.executeReadRoute(request.routeId, request.parameters ?? {});
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, requests.length) }, worker));
+    return results;
   }
 
   async disconnect(): Promise<void> {

@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import nodemailer from "nodemailer";
+import type nodemailer from "nodemailer";
 import { IServApiError } from "../Core/Errors.js";
 import { parseJson } from "../Core/HttpClient.js";
 import type { IServSession } from "../Core/IServSession.js";
@@ -110,6 +110,7 @@ export class EmailService {
   }
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
+    const { default: nodemailer } = await import("nodemailer");
     const { to, subject, body, htmlBody, smtpServer, smtpsPort = 465, attachments = [] } = options;
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {

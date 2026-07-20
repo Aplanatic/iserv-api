@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
-import { type Cookie, chromium } from "playwright-core";
+import type { Cookie } from "playwright-core";
 import { CookieJar } from "tough-cookie";
 import { normalizeInstanceUrl } from "../Core/InstanceUrl.js";
 import type { StoredSession } from "../Core/IServClient.js";
@@ -58,6 +58,7 @@ export async function loginWithBrowser(options: {
   timeoutMs?: number;
   allowPrivateHost?: boolean;
 }): Promise<StoredSession> {
+  const { chromium } = await import("playwright-core");
   const instance = normalizeInstanceUrl(
     options.url,
     options.allowPrivateHost ? { allowPrivateHost: true } : {},

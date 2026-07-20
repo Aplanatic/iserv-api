@@ -107,19 +107,23 @@ export class AuthBroker {
       return { profile: name, configured, authenticated: false, ...(account ? { account } : {}) };
     try {
       const client = IServAPI.restore(JSON.parse(encoded) as StoredSession);
-      const info = await client.users.getOwnInfo();
-      const capabilityResult = await client.capabilities
-        .list()
-        .then((capabilities) => ({ capabilities, verified: true }))
-        .catch(() => ({
-          capabilities: CapabilityService.unknown(),
-          verified: false,
-        }));
+      const [infoResult, capabilitiesResult] = await Promise.allSettled([
+        client.users.getOwnInfo(),
+        client.capabilities.list(),
+      ]);
+      if (infoResult.status === "rejected") throw infoResult.reason;
+      const capabilityResult =
+        capabilitiesResult.status === "fulfilled"
+          ? { capabilities: capabilitiesResult.value, verified: true }
+          : { capabilities: CapabilityService.unknown(), verified: false };
       return {
         profile: name,
         configured,
         authenticated: true,
-        account: { username: metadata?.username ?? "", displayName: info.name },
+        account: {
+          username: metadata?.username ?? "",
+          displayName: infoResult.value.name,
+        },
         capabilities: capabilityResult.capabilities,
         capabilitiesVerified: capabilityResult.verified,
       };

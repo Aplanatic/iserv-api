@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.7.2 - 2026-07-20
+
+### Added
+
+- Added ranked, filtered route search and lightweight `catalog` and `redaction` package exports.
+- Added `executeReadRoutes()` for bounded concurrent batches of up to eight safe session GET routes.
+- Expanded the catalog to 69 normal-user routes across 25 modules; 47 of 48 supported read routes are live-verified.
+- Added keychain-backed live verification for public-profile, address-book search, WebDAV, and direct-message-form reads.
+
+### Changed
+
+- Authentication identity and capability checks now run concurrently while retaining partial-failure handling.
+- Browser automation and SMTP dependencies load only when those features are invoked, reducing normal startup cost.
+- Route search now ranks exact IDs and multi-term matches before weaker description matches.
+
+### Security
+
+- Batch execution accepts only catalogued, supported, read-only session GET routes.
+- The one unverified supported read route opens a mail message and remains intentionally excluded from live probing to avoid changing read state on real accounts.
+
 ## 1.4.4 - 2026-07-19
 
 ### Changed

@@ -29,6 +29,20 @@ describe("RouteCatalog", () => {
     expect(catalog.get("calendar.plugin_events").status).toBe("experimental");
   });
 
+  test("ranks exact route matches and applies agent-friendly filters", () => {
+    const catalog = new RouteCatalog();
+    expect(catalog.search("calendar events")[0]?.id).toBe("calendar.events");
+    expect(
+      catalog.search("message", {
+        module: "messenger",
+        method: "GET",
+        sideEffect: "read",
+        status: "supported",
+        limit: 2,
+      }),
+    ).toHaveLength(2);
+  });
+
   test("classifies all newly discovered module routes as read-only", () => {
     const modules = [
       "exercise",

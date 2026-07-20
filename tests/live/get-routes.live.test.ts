@@ -40,4 +40,22 @@ describe.skipIf(!shouldRun)("live keychain-backed read contracts", () => {
     expect(summary.bytes).toBeGreaterThan(0);
     expect(JSON.stringify(summary)).not.toMatch(/<html|href=|@|cookie|token/i);
   });
+
+  test("account-scoped profile, search, and WebDAV reads work without mutation", async () => {
+    const broker = new AuthBroker();
+    const status = await broker.status();
+    const username = status.account?.username;
+    expect(username).toBeTruthy();
+    const client = await broker.restore();
+
+    const [profile, searchResults, webdavEntries] = await Promise.all([
+      client.users.getInfo(username as string),
+      client.users.search(username as string),
+      client.files.getClient().getDirectoryContents("/"),
+    ]);
+
+    expect(profile).toBeTypeOf("object");
+    expect(searchResults).toBeInstanceOf(Array);
+    expect(webdavEntries).toBeInstanceOf(Array);
+  });
 });

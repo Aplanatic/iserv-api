@@ -54,10 +54,59 @@ Restored profiles preserve their scoped Matrix session in the native keychain. O
 profiles can renew it with `AuthBroker.restoreMessenger()` without asking for credentials
 again. Cross-origin HTTP redirects are rejected before the destination is contacted.
 
+## Fast search and bounded batches
+
+Route-only consumers can avoid loading the full network SDK:
+
+```ts
+import { routeCatalog } from "@aplanatic/iserv-api/catalog";
+import { redactValue } from "@aplanatic/iserv-api/redaction";
+
+const matches = routeCatalog.search("calendar events", {
+  module: "calendar",
+  method: "GET",
+  sideEffect: "read",
+  status: "supported",
+  limit: 10,
+});
+```
+
+Search is multi-term, ranked, deterministic, and filterable. For agents or CLIs that need
+several independent overview pages, reuse one restored client and run a bounded batch:
+
+```ts
+const client = await new AuthBroker().restore();
+const results = await client.executeReadRoutes(
+  [
+    { routeId: "calendar.overview" },
+    { routeId: "etherpad.list" },
+    { routeId: "groupview.overview" },
+  ],
+  { concurrency: 3 },
+);
+```
+
+The batch limit is eight. Every request is validated against the same GET/session/read/
+supported policy as `executeReadRoute`; arbitrary URLs and mutation routes are rejected.
+Identity and module checks run concurrently, and browser/SMTP dependencies load only when
+used.
+
+## Coverage status
+
+The current catalog contains 69 routes in 25 modules: 63 supported, five experimental,
+and one documented-only CalDAV route. Forty-seven of 48 supported reads have a current
+live verification marker. Opening an individual mail message is the sole supported read
+not exercised against the real account because some installations may change its read
+state. Mutation routes are catalogued and tested with mocks, not executed on the real
+account. The local live suite currently runs 25 safe checks.
+
 ## Table of contents
 
 - [Installation](#installation)
 - [Basic usage](#basic-usage)
+- [Read-only module discovery](#read-only-module-discovery)
+- [Fast search and bounded batches](#fast-search-and-bounded-batches)
+- [Coverage status](#coverage-status)
 - [Supported functionality](#supported-functionality)
   - [Own account](#own-account)
     - [Get own user info](#get-own-user-info)

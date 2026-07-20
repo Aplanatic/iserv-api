@@ -44,4 +44,25 @@ describe("AuthBroker status", () => {
     });
     expect(status.capabilities?.every((item) => item.access === "unknown")).toBe(true);
   });
+
+  test("checks identity and capabilities concurrently", async () => {
+    let releaseIdentity: (() => void) | undefined;
+    const identity = new Promise<{ name: string }>((resolve) => {
+      releaseIdentity = () => resolve({ name: "Example Student" });
+    });
+    const capabilities = vi.fn(async () => []);
+    vi.spyOn(IServAPI, "restore").mockReturnValue({
+      users: { getOwnInfo: async () => identity },
+      capabilities: { list: capabilities },
+    } as unknown as IServAPI);
+
+    const pending = new AuthBroker(profiles, credentials).status();
+    await vi.waitFor(() => expect(capabilities).toHaveBeenCalledOnce());
+    releaseIdentity?.();
+
+    await expect(pending).resolves.toMatchObject({
+      authenticated: true,
+      capabilitiesVerified: true,
+    });
+  });
 });

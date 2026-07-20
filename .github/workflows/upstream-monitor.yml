@@ -1,4 +1,4 @@
-name: Private upstream monitor
+name: Upstream monitor
 
 on:
   schedule:
@@ -13,9 +13,10 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Check official documentation availability
         run: |
           for url in \
@@ -34,7 +35,7 @@ jobs:
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           fi
-      - name: Open sanitized internal update issue
+      - name: Open sanitized update issue
         if: steps.upstream.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,5 +44,5 @@ jobs:
           if [ "$existing" = 0 ]; then
             gh issue create \
               --title 'Upstream SDK update available' \
-              --body 'The weekly private monitor found new commits in the attributed public SDK. Review route and authentication metadata; do not attach live instance captures.'
+              --body 'The weekly monitor found new commits in the attributed public SDK. Review route and authentication metadata; do not attach live instance captures.'
           fi

@@ -1,5 +1,5 @@
-name: Install private IServ API package
-description: Install the canonical versioned SDK artifact for private consumer CI
+name: Install versioned IServ API package
+description: Install the canonical SDK artifact for consumer CI without registry credentials
 runs:
   using: composite
   steps:

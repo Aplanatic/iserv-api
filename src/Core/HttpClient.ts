@@ -68,6 +68,15 @@ export function createHttpClient(cookieJar: CookieJar) {
     cookieJar,
     headers: BROWSER_HEADERS,
     followRedirect: true,
+    hooks: {
+      beforeRedirect: [
+        (options, response) => {
+          if (!options.url || options.url.origin !== new URL(response.url).origin) {
+            throw new IServApiError("Cross-origin redirect blocked", 400);
+          }
+        },
+      ],
+    },
     throwHttpErrors: false,
     https: { rejectUnauthorized: true },
   });

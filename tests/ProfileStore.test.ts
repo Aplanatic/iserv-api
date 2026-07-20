@@ -31,6 +31,8 @@ describe("ProfileStore", () => {
   test("rejects unknown active profiles", async () => {
     const directory = await mkdtemp(join(tmpdir(), "iserv-profiles-"));
     directories.push(directory);
-    await expect(new ProfileStore(directory).setActive("missing")).rejects.toThrow(/Unknown profile/);
+    await expect(new ProfileStore(directory).setActive("missing")).rejects.toThrow(
+      /Unknown profile/,
+    );
   });
 });

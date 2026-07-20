@@ -13,7 +13,9 @@ describe("startExplorerServer", () => {
     const directory = await mkdtemp(join(tmpdir(), "iserv-explorer-"));
     await writeFile(join(directory, "index.html"), "<h1>Explorer</h1>");
     cleanup.push(() => rm(directory, { recursive: true }));
-    const executeReadRoute = vi.fn().mockResolvedValue({ routeId: "account.get", status: 200, data: {} });
+    const executeReadRoute = vi
+      .fn()
+      .mockResolvedValue({ routeId: "account.get", status: 200, data: {} });
     const server = await startExplorerServer({
       assetsDirectory: directory,
       client: { executeReadRoute } as unknown as IServAPI,
@@ -23,7 +25,13 @@ describe("startExplorerServer", () => {
 
     expect(await (await fetch(url.origin)).text()).toContain("Explorer");
     expect((await fetch(`${url.origin}/api/catalog`)).status).toBe(401);
-    expect((await fetch(`${url.origin}/api/catalog`, { headers: { Authorization: `Bearer ${server.token}` } })).status).toBe(200);
+    expect(
+      (
+        await fetch(`${url.origin}/api/catalog`, {
+          headers: { Authorization: `Bearer ${server.token}` },
+        })
+      ).status,
+    ).toBe(200);
 
     const response = await fetch(`${url.origin}/api/try`, {
       method: "POST",

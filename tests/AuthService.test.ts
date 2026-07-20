@@ -51,6 +51,36 @@ function createSession(
 }
 
 describe("AuthService.login", () => {
+  test("can renew only the Messenger session for a restored web session", async () => {
+    const calls: HttpCall[] = [];
+    const session = createSession(
+      {
+        get: [
+          {
+            data: "<main>messenger</main>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/",
+          },
+        ],
+        post: [
+          {
+            data: MESSENGER_AUTH_RESPONSE,
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/messenger/authenticate",
+          },
+        ],
+      },
+      calls,
+    );
+
+    await new AuthService(session).authenticateMessenger();
+
+    expect(session.matrixToken).toBe("syt_test");
+    expect(calls.map((call) => call.method)).toEqual(["get", "post"]);
+  });
+
   test("posts credentials to the resolved login URL and accepts a session that stays on /iserv/", async () => {
     const calls: HttpCall[] = [];
     const session = createSession(
@@ -154,7 +184,12 @@ describe("AuthService.login", () => {
           },
         ],
         post: [
-          { data: "<main></main>", status: 200, headers: {}, url: "https://iserv.example/iserv/auth/home" },
+          {
+            data: "<main></main>",
+            status: 200,
+            headers: {},
+            url: "https://iserv.example/iserv/auth/home",
+          },
           {
             data: MESSENGER_AUTH_RESPONSE,
             status: 200,
@@ -168,7 +203,9 @@ describe("AuthService.login", () => {
 
     await new AuthService(session).login();
 
-    expect(calls.filter((call) => call.method === "get" && call.url === "https://iserv.example/iserv/")).toHaveLength(3);
+    expect(
+      calls.filter((call) => call.method === "get" && call.url === "https://iserv.example/iserv/"),
+    ).toHaveLength(3);
   });
 
   test("follows the post-login meta refresh callback before checking the app session", async () => {

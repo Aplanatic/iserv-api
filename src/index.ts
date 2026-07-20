@@ -1,5 +1,6 @@
 export {
   AuthBroker,
+  type AuthStatus,
   type BrowserLoginOptions,
   type LoginOptions,
 } from "./Auth/AuthBroker.js";
@@ -13,6 +14,11 @@ export {
   NativeCredentialStore,
 } from "./Auth/CredentialStore.js";
 export { type ProfileMetadata, ProfileStore } from "./Auth/ProfileStore.js";
+export {
+  CapabilityService,
+  type ModuleAccess,
+  type ModuleCapability,
+} from "./Capabilities/CapabilityService.js";
 export { IServApiError, IServAuthError } from "./Core/Errors.js";
 export {
   type HtmlStructureSummary,

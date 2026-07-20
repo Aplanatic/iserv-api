@@ -23,11 +23,14 @@ describe("normalizeInstanceUrl", () => {
   });
 
   test("allows an explicitly approved private host", () => {
-    expect(normalizeInstanceUrl("localhost", { allowPrivateHost: true }).hostname).toBe("localhost");
+    expect(normalizeInstanceUrl("localhost", { allowPrivateHost: true }).hostname).toBe(
+      "localhost",
+    );
   });
 
   test("rejects cross-origin redirects", () => {
-    expect(() => assertSameOrigin("https://iserv.example", "https://example.invalid/iserv"))
-      .toThrowError(/Cross-origin/);
+    expect(() =>
+      assertSameOrigin("https://iserv.example", "https://example.invalid/iserv"),
+    ).toThrowError(/Cross-origin/);
   });
 });

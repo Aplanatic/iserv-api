@@ -45,6 +45,15 @@ are rejected by `executeReadRoute`. Local contract checks reuse the native-keych
 and can be enabled explicitly with `ISERV_LIVE=1 npm run test:live`; no credential file is
 read or supported.
 
+`AuthBroker.status()` also returns the signed-in display name, username, and an honest
+module capability inventory. It distinguishes available modules from experimental,
+unavailable, and non-installed integrations. Operation counts describe catalog coverage;
+write permissions are still enforced by the instance when an action is invoked.
+
+Restored profiles preserve their scoped Matrix session in the native keychain. Older
+profiles can renew it with `AuthBroker.restoreMessenger()` without asking for credentials
+again. Cross-origin HTTP redirects are rejected before the destination is contacted.
+
 ## Table of contents
 
 - [Installation](#installation)

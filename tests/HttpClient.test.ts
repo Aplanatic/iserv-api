@@ -11,6 +11,9 @@ beforeAll(async () => {
     if (req.url === "/redirect") {
       res.writeHead(302, { Location: `${baseUrl}/final` });
       res.end();
+    } else if (req.url === "/external-redirect") {
+      res.writeHead(302, { Location: "https://outside.invalid/target" });
+      res.end();
     } else {
       res.writeHead(200);
       res.end("ok");
@@ -36,5 +39,13 @@ describe("createHttpClient", () => {
 
     expect(response.url).toBe(`${baseUrl}/final`);
     expect(response.data).toBe("ok");
+  });
+
+  test("blocks cross-origin redirects before contacting the target", async () => {
+    const client = createHttpClient(new CookieJar());
+
+    await expect(client.get(`${baseUrl}/external-redirect`)).rejects.toThrow(
+      "Cross-origin redirect blocked",
+    );
   });
 });

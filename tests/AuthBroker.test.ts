@@ -1,0 +1,47 @@
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { AuthBroker } from "../src/Auth/AuthBroker.js";
+import type { CredentialStore } from "../src/Auth/CredentialStore.js";
+import type { ProfileStore } from "../src/Auth/ProfileStore.js";
+import { IServAPI } from "../src/Core/IServClient.js";
+
+const profiles = {
+  read: async () => ({
+    version: 1 as const,
+    activeProfile: "default",
+    profiles: [
+      {
+        name: "default",
+        hostname: "iserv.example",
+        username: "alice",
+        createdAt: "2026-07-20T00:00:00.000Z",
+        updatedAt: "2026-07-20T00:00:00.000Z",
+      },
+    ],
+  }),
+} as ProfileStore;
+
+const credentials = {
+  get: async () => JSON.stringify({ hostname: "iserv.example" }),
+  set: async () => undefined,
+  delete: async () => undefined,
+} satisfies CredentialStore;
+
+describe("AuthBroker status", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test("keeps a verified identity when capability discovery is temporarily unavailable", async () => {
+    vi.spyOn(IServAPI, "restore").mockReturnValue({
+      users: { getOwnInfo: async () => ({ name: "Example Student" }) },
+      capabilities: { list: async () => Promise.reject(new Error("temporary failure")) },
+    } as unknown as IServAPI);
+
+    const status = await new AuthBroker(profiles, credentials).status();
+
+    expect(status).toMatchObject({
+      authenticated: true,
+      account: { username: "alice", displayName: "Example Student" },
+      capabilitiesVerified: false,
+    });
+    expect(status.capabilities?.every((item) => item.access === "unknown")).toBe(true);
+  });
+});

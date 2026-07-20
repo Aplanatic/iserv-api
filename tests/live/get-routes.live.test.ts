@@ -12,6 +12,21 @@ const SAFE_OVERVIEW_ROUTES = [
   "course_selection.list",
   "mailing_lists.list",
   "print.overview",
+  "account.info",
+  "account.settings",
+  "account.last_logins",
+  "users.personal",
+  "calendar.overview",
+  "files.overview",
+  "mail.overview",
+  "messenger.overview",
+  "messenger.direct_form",
+  "app.legal",
+  "etherpad.list",
+  "groupview.overview",
+  "help.overview",
+  "office.overview",
+  "conference.overview",
 ] as const;
 
 describe.skipIf(!shouldRun)("live keychain-backed read contracts", () => {

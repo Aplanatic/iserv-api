@@ -238,21 +238,7 @@ export class AuthService {
 
       await this.establishAppSession();
 
-      await this.session.http.get(`${this.session.baseUrl()}/iserv/messenger/`);
-
-      const messengerAuthRes = await this.session.http.post(
-        `${this.session.baseUrl()}/iserv/messenger/authenticate`,
-        null,
-        { headers: { Accept: "*/*", Origin: this.session.baseUrl() } },
-      );
-      const matrixData = parseJson<Record<string, unknown>>(
-        messengerAuthRes.data,
-        "messenger authentication",
-      );
-      const matrixToken = (matrixData?.access_token as string) ?? null;
-      const matrixUserId = (matrixData?.user_id as string) ?? undefined;
-      if (!matrixToken) throw new IServAuthError("Login failed! Could not retrieve Matrix token.");
-      this.session.setMatrixToken(matrixToken, matrixUserId);
+      await this.authenticateMessenger();
 
       log.info("Login successful");
     } catch (err) {
@@ -260,6 +246,23 @@ export class AuthService {
       const message = err instanceof Error ? err.message : "Unknown connection error";
       throw new IServAuthError(`Connection error: ${message}`);
     }
+  }
+
+  async authenticateMessenger(): Promise<void> {
+    await this.session.http.get(`${this.session.baseUrl()}/iserv/messenger/`);
+    const messengerAuthRes = await this.session.http.post(
+      `${this.session.baseUrl()}/iserv/messenger/authenticate`,
+      null,
+      { headers: { Accept: "*/*", Origin: this.session.baseUrl() } },
+    );
+    const matrixData = parseJson<Record<string, unknown>>(
+      messengerAuthRes.data,
+      "messenger authentication",
+    );
+    const matrixToken = (matrixData?.access_token as string) ?? null;
+    const matrixUserId = (matrixData?.user_id as string) ?? undefined;
+    if (!matrixToken) throw new IServAuthError("Could not retrieve a Matrix session token.");
+    this.session.setMatrixToken(matrixToken, matrixUserId);
   }
 
   async logout(): Promise<void> {

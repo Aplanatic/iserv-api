@@ -1,6 +1,7 @@
 import type { SerializedCookieJar } from "tough-cookie";
 import { type AuthChallengeHandler, AuthService } from "../Auth/AuthService.js";
 import { CalendarService } from "../Calendar/CalendarService.js";
+import { CapabilityService } from "../Capabilities/CapabilityService.js";
 import { ConferenceService } from "../Conference/ConferenceService.js";
 import { EmailService } from "../Email/EmailService.js";
 import { FilesService } from "../Files/FilesService.js";
@@ -18,10 +19,13 @@ export interface StoredSession {
   username: string;
   password?: string;
   cookies: SerializedCookieJar;
+  matrixToken?: string;
+  matrixUserId?: string;
 }
 
 export class IServAPI {
   readonly calendar: CalendarService;
+  readonly capabilities: CapabilityService;
   readonly email: EmailService;
   readonly users: UserService;
   readonly notifications: NotificationService;
@@ -36,6 +40,7 @@ export class IServAPI {
     this.session = session;
     this.auth = new AuthService(session, challengeHandler);
     this.calendar = new CalendarService(session);
+    this.capabilities = new CapabilityService(session);
     this.email = new EmailService(session);
     this.users = new UserService(session);
     this.notifications = new NotificationService(session);
@@ -63,6 +68,7 @@ export class IServAPI {
       stored.password ?? "",
       stored.cookies,
     );
+    if (stored.matrixToken) session.setMatrixToken(stored.matrixToken, stored.matrixUserId);
     return new IServAPI(session);
   }
 
@@ -72,6 +78,8 @@ export class IServAPI {
       username: this.session.username,
       cookies: this.session.serializeCookies(),
     };
+    if (this.session.matrixToken) result.matrixToken = this.session.matrixToken;
+    if (this.session.matrixUserId) result.matrixUserId = this.session.matrixUserId;
     if (options.includePassword) result.password = this.session.getPassword();
     return result;
   }
@@ -83,6 +91,11 @@ export class IServAPI {
     } catch {
       return false;
     }
+  }
+
+  async ensureMessengerSession(): Promise<void> {
+    if (this.session.matrixToken) return;
+    await this.auth.authenticateMessenger();
   }
 
   async executeReadRoute(

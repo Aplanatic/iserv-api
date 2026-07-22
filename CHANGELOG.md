@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0 - 2026-07-22
+
+- **Session auto-refresh**: Automatically re-authenticate when session cookies expire or IServ redirects to the login page (HTTP 401 / login redirect detection in `HttpClient`).
+- **Matrix token auto-refresh**: `AuthService.refreshSession()` re-obtains Matrix access tokens transparently.
+- **Keychain auto-sync**: `IServAPI.onSessionRefreshed` callback notifies `AuthBroker` to persist refreshed sessions back to the OS native keychain.
+- `IServSession.hasPassword()` helper.
+- `HttpClient.setOnAuthError()` for pluggable auth-failure interception.
+- `IServAPI.refreshSession()` and improved `validateSession()` / `ensureMessengerSession(forceRefresh)`.
+
 ## 1.8.14 - 2026-07-20
 
 - Harden messenger last-message display so room envelopes never surface `[object Object]`.

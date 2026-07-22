@@ -47,7 +47,7 @@ describe("IServAPI stored sessions", () => {
     const restored = IServAPI.restore({
       hostname: "iserv.example",
       username: "alice",
-      password: "secretpassword",
+      password: "test-password",
       cookies: new CookieJar().serializeSync(),
     });
     const listener = vi.fn();
@@ -64,7 +64,7 @@ describe("IServAPI stored sessions", () => {
     const restored = IServAPI.restore({
       hostname: "iserv.example",
       username: "alice",
-      password: "secretpassword",
+      password: "test-password",
       cookies: new CookieJar().serializeSync(),
     });
     vi.spyOn(restored.users, "getOwnInfo").mockRejectedValue(new Error("HTTP 401"));

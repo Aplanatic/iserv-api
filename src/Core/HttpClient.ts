@@ -187,13 +187,8 @@ export function createHttpClient(cookieJar: CookieJar, options: HttpClientOption
       try {
         const res = await run();
         const isLoginRedirect =
-          typeof res.body === "string" &&
-          new URL(res.url).pathname === "/iserv/auth/login";
-        if (
-          (res.statusCode === 401 || isLoginRedirect) &&
-          onAuthError &&
-          !authRefreshed
-        ) {
+          typeof res.body === "string" && new URL(res.url).pathname === "/iserv/auth/login";
+        if ((res.statusCode === 401 || isLoginRedirect) && onAuthError && !authRefreshed) {
           authRefreshed = true;
           const refreshed = await onAuthError();
           if (refreshed) {

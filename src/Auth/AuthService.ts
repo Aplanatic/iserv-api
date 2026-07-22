@@ -272,6 +272,23 @@ export class AuthService {
     this.session.setMatrixToken(matrixToken, matrixUserId);
   }
 
+  async refreshSession(): Promise<boolean> {
+    if (!this.session.hasPassword()) {
+      try {
+        await this.authenticateMessenger();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    try {
+      await this.login();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async logout(): Promise<void> {
     try {
       await this.session.http.get(`${this.session.baseUrl()}/iserv/auth/logout`);

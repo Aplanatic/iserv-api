@@ -83,6 +83,8 @@ export class IServAPI {
   private readonly auth: AuthService;
   private readonly session: IServSession;
 
+  onSessionRefreshed?: (client: IServAPI) => void;
+
   private constructor(session: IServSession, challengeHandler?: AuthChallengeHandler) {
     this.session = session;
     this.auth = new AuthService(session, challengeHandler);
@@ -96,6 +98,11 @@ export class IServAPI {
     this.messenger = new MessengerService(session);
     this.timetable = new TimetableService(session);
     this.modules = new ModulePageService(session);
+
+    this.session.http.setOnAuthError(async () => {
+      const refreshed = await this.refreshSession();
+      return refreshed;
+    });
   }
 
   static async connect(
@@ -129,8 +136,22 @@ export class IServAPI {
     };
     if (this.session.matrixToken) result.matrixToken = this.session.matrixToken;
     if (this.session.matrixUserId) result.matrixUserId = this.session.matrixUserId;
-    if (options.includePassword) result.password = this.session.getPassword();
+    if (options.includePassword && this.session.hasPassword()) {
+      result.password = this.session.getPassword();
+    }
     return result;
+  }
+
+  async refreshSession(): Promise<boolean> {
+    const refreshed = await this.auth.refreshSession();
+    if (refreshed && this.onSessionRefreshed) {
+      try {
+        this.onSessionRefreshed(this);
+      } catch {
+        // Ignore listener failures
+      }
+    }
+    return refreshed;
   }
 
   async validateSession(): Promise<boolean> {
@@ -138,13 +159,20 @@ export class IServAPI {
       await this.users.getOwnInfo();
       return true;
     } catch {
-      return false;
+      return this.refreshSession();
     }
   }
 
-  async ensureMessengerSession(): Promise<void> {
-    if (this.session.matrixToken) return;
+  async ensureMessengerSession(forceRefresh = false): Promise<void> {
+    if (this.session.matrixToken && !forceRefresh) return;
     await this.auth.authenticateMessenger();
+    if (this.onSessionRefreshed) {
+      try {
+        this.onSessionRefreshed(this);
+      } catch {
+        // Ignore listener failures
+      }
+    }
   }
 
   /**

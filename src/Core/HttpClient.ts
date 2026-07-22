@@ -25,6 +25,8 @@ export interface HttpClientOptions {
   maxRetries?: number;
   /** Reject responses larger than this many bytes (default: 15 MiB). */
   maxResponseBytes?: number;
+  /** Optional callback to attempt session refresh on HTTP 401 or login redirect. */
+  onAuthError?: () => Promise<boolean>;
 }
 
 export interface IServJsonResponse<T> {
@@ -142,10 +144,15 @@ function retryAfterMs(headers: Record<string, unknown>, attempt: number): number
 }
 
 export function createHttpClient(cookieJar: CookieJar, options: HttpClientOptions = {}) {
+  let onAuthError = options.onAuthError;
   const timeoutMs = resolveTimeoutMs(options);
   const maxRetries = options.maxRetries ?? 2;
   const maxResponseBytes = options.maxResponseBytes ?? 15 * 1024 * 1024;
   const userAgent = resolveUserAgent(options);
+
+  function setOnAuthError(handler?: () => Promise<boolean>): void {
+    onAuthError = handler;
+  }
 
   const client = got.extend({
     cookieJar,
@@ -175,9 +182,24 @@ export function createHttpClient(cookieJar: CookieJar, options: HttpClientOption
     }>,
   ): Promise<{ data: T; status: number; headers: Record<string, unknown>; url: string }> {
     let attempt = 0;
+    let authRefreshed = false;
     for (;;) {
       try {
         const res = await run();
+        const isLoginRedirect =
+          typeof res.body === "string" &&
+          new URL(res.url).pathname === "/iserv/auth/login";
+        if (
+          (res.statusCode === 401 || isLoginRedirect) &&
+          onAuthError &&
+          !authRefreshed
+        ) {
+          authRefreshed = true;
+          const refreshed = await onAuthError();
+          if (refreshed) {
+            continue;
+          }
+        }
         if (
           (res.statusCode === 429 || res.statusCode === 502 || res.statusCode === 503) &&
           attempt < maxRetries
@@ -292,7 +314,7 @@ export function createHttpClient(cookieJar: CookieJar, options: HttpClientOption
     });
   }
 
-  return { get, post, put, patch, timeoutMs, maxResponseBytes, userAgent };
+  return { get, post, put, patch, timeoutMs, maxResponseBytes, userAgent, setOnAuthError };
 }
 
 export type HttpClient = ReturnType<typeof createHttpClient>;

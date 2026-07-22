@@ -30,6 +30,11 @@ export class IServSession {
     return `https://${this.url}/_matrix/client/v3`;
   }
 
+  hasPassword(): boolean {
+    const pw = passwords.get(this);
+    return typeof pw === "string" && pw.length > 0;
+  }
+
   getPassword(): string {
     const pw = passwords.get(this);
     if (pw === undefined) throw new Error("Session password unavailable");

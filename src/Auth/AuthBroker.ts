@@ -51,6 +51,12 @@ export class AuthBroker {
       options.password,
       options.challengeHandler ? { challengeHandler: options.challengeHandler } : {},
     );
+    client.onSessionRefreshed = (c) => {
+      this.credentials.set(
+        options.profile,
+        JSON.stringify(c.exportSession({ includePassword: !options.ephemeral })),
+      );
+    };
     await this.credentials.set(
       options.profile,
       JSON.stringify(client.exportSession({ includePassword: !options.ephemeral })),
@@ -70,7 +76,14 @@ export class AuthBroker {
     const encoded = await this.credentials.get(name);
     if (!encoded) throw new Error(`No native-keychain session exists for profile: ${name}`);
     const stored = JSON.parse(encoded) as StoredSession;
-    return IServAPI.restore(stored);
+    const client = IServAPI.restore(stored);
+    client.onSessionRefreshed = (c) => {
+      this.credentials.set(
+        name,
+        JSON.stringify(c.exportSession({ includePassword: Boolean(stored.password) })),
+      );
+    };
+    return client;
   }
 
   async restoreMessenger(profile?: string): Promise<IServAPI> {
@@ -81,6 +94,12 @@ export class AuthBroker {
     if (!encoded) throw new Error(`No native-keychain session exists for profile: ${name}`);
     const prior = JSON.parse(encoded) as StoredSession;
     const client = IServAPI.restore(prior);
+    client.onSessionRefreshed = (c) => {
+      this.credentials.set(
+        name,
+        JSON.stringify(c.exportSession({ includePassword: Boolean(prior.password) })),
+      );
+    };
     await client.ensureMessengerSession();
     await this.credentials.set(
       name,
@@ -97,7 +116,14 @@ export class AuthBroker {
       hostname: stored.hostname,
       username: options.username,
     });
-    return IServAPI.restore(stored);
+    const client = IServAPI.restore(stored);
+    client.onSessionRefreshed = (c) => {
+      this.credentials.set(
+        options.profile,
+        JSON.stringify(c.exportSession({ includePassword: Boolean(stored.password) })),
+      );
+    };
+    return client;
   }
 
   async status(profile?: string): Promise<AuthStatus> {
